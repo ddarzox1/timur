@@ -1,0 +1,59 @@
+{{define "page"}}{{template "admin" .}}{{end}}
+{{define "title"}}{{t "Дашборд"}}{{end}}
+{{define "content"}}
+<div class="row between">
+  <h1>{{t "Дашборд"}}</h1>
+  <div class="row small">
+    {{range $p := ints 30 90 365}}<a class="btn {{if eq $p $.Period}}primary{{end}}" href="/admin?period={{$p}}">{{$p}} дн.</a>{{end}}
+  </div>
+</div>
+<div class="grid kpi">
+  <div class="card"><div class="num" style="color:var(--ok)">{{.Days}}</div><div class="lbl">Дней без травм</div></div>
+  <a class="card" href="/admin/hazards?status=active" style="color:inherit;text-decoration:none"><div class="num">{{.OpenH}}</div><div class="lbl">Открытых опасностей{{if .OverdueH}} · <span class="badge danger">{{.OverdueH}} просрочено</span>{{end}}</div></a>
+  <a class="card" href="/admin/assignments" style="color:inherit;text-decoration:none"><div class="num">{{pct .SignedA .TotalA}}%</div><div class="lbl">Инструктажей подписано ({{.SignedA}} из {{.TotalA}})</div></a>
+  <div class="card"><div class="num" {{if .Expiring}}style="color:var(--warn)"{{end}}>{{len .Expiring}}</div><div class="lbl">Истекает повторный инструктаж (≤{{.O.RepeatWarnDays}} дн.)</div></div>
+  <a class="card" href="/admin/runs" style="color:inherit;text-decoration:none"><div class="num">{{.Runs7}}</div><div class="lbl">Осмотров за неделю</div></a>
+</div>
+
+<div class="grid cols" style="margin-top:1rem">
+  <div class="card">
+    <div class="row between"><h3>Опасности по неделям</h3>
+      <span class="legend"><span><i style="background:var(--orange)"></i>созданы</span><span><i style="background:var(--ok)"></i>устранены</span></span></div>
+    <div class="bars" role="img" aria-label="Опасности по неделям">
+      {{range .Weeks}}<div class="col" title="{{.Label}}: создано {{.A}}, устранено {{.B}}">
+        <div class="pair"><div class="b a" style="height:{{pct .A $.MaxW}}%"></div><div class="b f" style="height:{{pct .B $.MaxW}}%"></div></div>
+        <span class="small muted">{{.Label}}</span></div>{{end}}
+    </div>
+  </div>
+  <div class="card">
+    <h3>Опасности по категориям</h3>
+    {{range .Cats}}<div class="hbar"><span>{{catIcon .Label}} {{cat .Label}}</span><div class="track"><div class="fill" style="width:{{pct .A $.MaxC}}%"></div></div><b>{{.A}}</b></div>
+    {{else}}<p class="muted">Нет данных за период</p>{{end}}
+  </div>
+  <div class="card">
+    <h3>Подписи инструктажей по подразделениям</h3>
+    {{range .Deps}}<div class="hbar"><span>{{.Label}}</span><div class="track"><div class="fill" style="width:{{pct .B .A}}%;background:var(--ok)"></div></div><b>{{pct .B .A}}%</b></div>
+    {{else}}<p class="muted">Нет назначений за период</p>{{end}}
+  </div>
+</div>
+
+<h2>Требует внимания</h2>
+<div class="table-wrap"><table class="rtable">
+  <thead><tr><th>Что</th><th>Кто</th><th>Срок</th><th></th></tr></thead>
+  <tbody>
+  {{range .OverdueHz}}<tr>
+    <td>⚠️ <a href="/admin/hazards/{{.ID}}">№{{.ID}} {{cat .Category}}</a> · <span class="muted">{{.Location}}</span></td>
+    <td>{{or .Responsible "не назначен"}}</td><td><span class="badge danger">{{date .DueAt}}</span></td>
+    <td><a class="btn" href="/admin/hazards/{{.ID}}">Открыть</a></td></tr>{{end}}
+  {{range .OverdueAs}}<tr>
+    <td>✍️ {{.Title}} <span class="badge info">{{kind .Kind}}</span></td>
+    <td>{{.UserName}}</td><td><span class="badge danger">{{date .DueAt}}</span></td>
+    <td><form hx-post="/admin/assignments/{{.Batch}}/remind" hx-swap="outerHTML"><button class="btn">Напомнить</button></form></td></tr>{{end}}
+  {{range .Expiring}}<tr>
+    <td>🔁 Повторный: {{.Title}}</td><td>{{.UserName}}</td>
+    <td><span class="badge {{if overdue .NextDue}}danger{{else}}warn{{end}}">{{date .NextDue}}</span></td>
+    <td><a class="btn" href="/admin/assign?template={{.Template}}&q={{.UserName}}">Назначить</a></td></tr>{{end}}
+  {{if not (or .OverdueHz .OverdueAs .Expiring)}}<tr><td colspan="4" class="muted">Всё в порядке ✓</td></tr>{{end}}
+  </tbody>
+</table></div>
+{{end}}

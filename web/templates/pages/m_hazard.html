@@ -1,0 +1,34 @@
+{{define "page"}}{{template "mobile" .}}{{end}}
+{{define "title"}}№{{.H.ID}}{{end}}
+{{define "content"}}
+<a href="/m/hazards">‹ {{t "Назад"}}</a>
+{{if .Created}}<div class="success" style="margin-top:.75rem">✓ {{t "Спасибо! Опасность передана ответственному"}} · №{{.H.ID}}</div>{{end}}
+<h1 style="margin-top:.75rem">{{catIcon .H.Category}} №{{.H.ID}} · {{t (cat .H.Category)}}</h1>
+<p class="row">{{template "statusBadge" .H}} {{template "riskBadge" .H.Risk}}</p>
+{{template "photos" .Photos}}
+<div class="card" style="margin-top:1rem">
+  <p style="margin-top:0">{{.H.Description}}</p>
+  <div class="small muted">{{t "Объект"}}: {{or .H.Location "—"}}{{with .H.Place}}, {{.}}{{end}}</div>
+  <div class="small muted">{{t "Ответственный"}}: {{or .H.Responsible "—"}}</div>
+  <div class="small muted">{{t "Срок"}}: {{date .H.DueAt}}</div>
+  {{with .H.Action}}<div class="small" style="margin-top:.5rem"><b>{{t "Что сделано"}}:</b> {{.}}</div>{{end}}
+</div>
+
+{{if and .IsResp (or (eq .H.Status "open") (eq .H.Status "in_progress"))}}
+<div class="card">
+  {{if eq .H.Status "open"}}<form hx-post="/m/hazards/{{.H.ID}}/start" style="margin-bottom:1rem"><button class="btn primary big">{{t "Взять в работу"}}</button></form>{{end}}
+  <form hx-post="/m/hazards/{{.H.ID}}/fix" hx-encoding="multipart/form-data">
+    <div class="field"><label for="after">📷 {{t "Фото после устранения"}}</label><input id="after" type="file" name="photo" accept="image/*" capture="environment" required></div>
+    <div class="field"><label for="cm">{{t "Что сделано"}}</label><textarea id="cm" name="comment" required></textarea></div>
+    <button class="btn accent big" type="submit">{{t "Отметить устранённой"}}</button>
+  </form>
+</div>
+{{end}}
+
+<h2>{{t "История"}}</h2>
+{{template "timeline" .Events}}
+<form hx-post="/m/hazards/{{.H.ID}}/comment" class="row" style="margin-top:1rem">
+  <input class="grow" name="text" placeholder="{{t "Комментарий"}}" required style="width:auto">
+  <button class="btn">{{t "Отправить"}}</button>
+</form>
+{{end}}

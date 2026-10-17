@@ -1,0 +1,43 @@
+{{define "page"}}{{template "admin" .}}{{end}}
+{{define "title"}}{{or .T.Title "Новый чек-лист"}}{{end}}
+{{define "content"}}
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js" defer></script>
+<p><a href="/admin/checklists">‹ Чек-листы</a></p>
+<h1>{{if .T.ID}}Чек-лист{{else}}Новый чек-лист{{end}}</h1>
+<form class="card" hx-post="/admin/checklists/save">
+  {{if .T.ID}}<input type="hidden" name="id" value="{{.T.ID}}">{{end}}
+  <div class="grid">
+    <div class="field"><label for="title">Название</label><input id="title" name="title" value="{{.T.Title}}" required></div>
+    <div class="field"><label for="loc">Объект</label><select id="loc" name="location_id"><option value="">Все объекты</option>{{range .Locs}}<option value="{{.ID}}" {{if eq .ID (deref $.T.LocationID)}}selected{{end}}>{{.Name}}</option>{{end}}</select></div>
+    <div class="field"><label for="freq">Периодичность</label><select id="freq" name="frequency">{{range $k := strs "daily" "weekly" "once"}}<option value="{{$k}}" {{if eq $k $.T.Frequency}}selected{{end}}>{{freq $k}}</option>{{end}}</select></div>
+  </div>
+  <h3>Пункты <span class="muted small">— перетаскивайте за ⠿</span></h3>
+  <div class="table-wrap"><table>
+    <thead><tr><th></th><th>Тип</th><th>Текст</th><th>При «Нет»</th><th>Категория опасности</th><th></th></tr></thead>
+    <tbody id="items">{{range .T.Items}}{{template "row" .}}{{end}}</tbody>
+  </table></div>
+  <div class="row" style="margin:1rem 0">
+    <button type="button" class="btn" hx-get="/admin/checklists/row" hx-target="#items" hx-swap="beforeend">＋ Пункт</button>
+    <button type="button" class="btn" hx-get="/admin/checklists/row?type=section" hx-target="#items" hx-swap="beforeend">＋ Раздел</button>
+  </div>
+  <button class="btn primary" type="submit">Сохранить</button>
+</form>
+<script>
+  addEventListener('load', () => Sortable.create(document.getElementById('items'), { handle: '.drag', animation: 150 }));
+</script>
+{{end}}
+
+{{define "row"}}
+<tr {{if eq .Type "section"}}style="background:var(--bg)"{{end}}>
+  <td class="drag" style="cursor:grab;width:28px" aria-label="Перетащить">⠿</td>
+  <td style="width:110px"><input type="hidden" name="item_type" value="{{.Type}}">{{if eq .Type "section"}}<b>Раздел</b>{{else}}Да/Нет/Н/П{{end}}</td>
+  <td><input name="item_text" value="{{.Text}}" placeholder="{{if eq .Type "section"}}Название раздела{{else}}Что проверить{{end}}" aria-label="Текст"></td>
+  {{if eq .Type "section"}}
+  <td><input type="hidden" name="item_hazard" value="0"></td><td><input type="hidden" name="item_cat" value=""></td>
+  {{else}}
+  <td><select name="item_hazard" aria-label="При «Нет»"><option value="1" {{if .HazardOnNo}}selected{{end}}>Создать опасность</option><option value="0" {{if not .HazardOnNo}}selected{{end}}>Только отметить</option></select></td>
+  <td><select name="item_cat" aria-label="Категория">{{$c := .Category}}{{range cats}}<option value="{{.Key}}" {{if eq .Key $c}}selected{{end}}>{{.Label}}</option>{{end}}</select></td>
+  {{end}}
+  <td><button type="button" class="btn" onclick="this.closest('tr').remove()" aria-label="Удалить">✕</button></td>
+</tr>
+{{end}}

@@ -1,0 +1,97 @@
+{{define "head"}}<!doctype html>
+<html lang="{{if eq .Lang "kk"}}kk{{else}}ru{{end}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f2a4a">
+<link rel="manifest" href="/static/manifest.json">
+<link rel="icon" href="/static/icon.svg">
+<link rel="stylesheet" href="/static/app.css">
+<script src="/static/htmx.min.js" defer></script>
+<script src="/static/app.js" defer></script>
+{{end}}
+
+{{define "langswitch"}}<span class="small"><a href="/lang/ru" {{if ne .Lang "kk"}}style="font-weight:700"{{end}}>RU</a> / <a href="/lang/kk" {{if eq .Lang "kk"}}style="font-weight:700"{{end}}>ҚАЗ</a></span>{{end}}
+
+{{/* Админка: левое меню + шапка */}}
+{{define "admin"}}{{template "head" .}}<title>{{template "title" .}} — Qauipsiz</title></head>
+<body hx-boost="true">
+<div id="toast" role="alert"></div>
+<div class="admin">
+  <input type="checkbox" id="nav" class="nav-toggle" aria-hidden="true">
+  <label for="nav" class="nav-shade" aria-hidden="true"></label>
+  <nav class="side" id="side">
+    <a class="logo" href="/admin">Qauip<span>siz</span></a>
+    <a href="/admin" {{if eq .Path "/admin"}}class="on"{{end}}>📊 {{t "Дашборд"}}</a>
+    <a href="/admin/hazards" {{if eq .Path "/admin/hazards"}}class="on"{{end}}>⚠️ {{t "Опасности"}}</a>
+    <div class="group">{{t "Инструктажи"}}</div>
+    <div class="sub">
+      <a href="/admin/inductions" {{if eq .Path "/admin/inductions"}}class="on"{{end}}>{{t "Шаблоны"}}</a>
+      <a href="/admin/assignments" {{if eq .Path "/admin/assignments"}}class="on"{{end}}>{{t "Назначения"}}</a>
+      <a href="/admin/journals" {{if eq .Path "/admin/journals"}}class="on"{{end}}>{{t "Журналы"}}</a>
+    </div>
+    <div class="group">{{t "Чек-листы"}}</div>
+    <div class="sub">
+      <a href="/admin/checklists" {{if eq .Path "/admin/checklists"}}class="on"{{end}}>{{t "Шаблоны"}}</a>
+      <a href="/admin/runs" {{if eq .Path "/admin/runs"}}class="on"{{end}}>{{t "Результаты"}}</a>
+    </div>
+    <div class="group">&nbsp;</div>
+    <a href="/admin/people" {{if eq .Path "/admin/people"}}class="on"{{end}}>👷 {{t "Сотрудники"}}</a>
+    <a href="/admin/org" {{if eq .Path "/admin/org"}}class="on"{{end}}>🏗 {{t "Оргструктура"}}</a>
+    {{if eq .Me.Role "admin"}}<a href="/admin/settings" {{if eq .Path "/admin/settings"}}class="on"{{end}}>⚙️ {{t "Настройки"}}</a>{{end}}
+    <a href="/m">📱 {{t "Мобильная версия"}}</a>
+  </nav>
+  <div>
+    <header class="topbar">
+      <label for="nav" class="burger" aria-label="Меню" role="button" tabindex="0">☰</label>
+      <span class="muted small grow hide-sm">{{.Me.OrgName}}</span>
+      <a class="logo-t show-sm grow" href="/admin">Qauip<span>siz</span></a>
+      {{template "langswitch" .}}
+      <span class="hide-sm"><b>{{.Me.Name}}</b> <span class="muted small">· {{t (role .Me.Role)}}</span></span>
+      <form method="post" action="/logout"><button class="btn">{{t "Выйти"}}</button></form>
+    </header>
+    <main class="main">{{template "content" .}}</main>
+  </div>
+</div>
+</body></html>{{end}}
+
+{{/* Мобильная версия сотрудника: нижняя навигация с большой кнопкой «+» */}}
+{{define "mobile"}}{{template "head" .}}<title>{{template "title" .}} — Qauipsiz</title></head>
+<body hx-boost="true">
+<div id="toast" role="alert"></div>
+<div class="mobile">{{template "content" .}}</div>
+<nav class="tabbar">
+  <a href="/m" {{if eq .Path "/m"}}class="on"{{end}}><span class="ic">🏠</span>{{t "Главная"}}</a>
+  <a href="/m/hazards" {{if eq .Path "/m/hazards"}}class="on"{{end}}><span class="ic">⚠️</span>{{t "Опасности"}}</a>
+  <a href="/m/hazards/new" class="plus" aria-label="{{t "Сообщить об опасности"}}">＋</a>
+  <a href="/m/checklists" {{if eq .Path "/m/checklists"}}class="on"{{end}}><span class="ic">✅</span>{{t "Чек-листы"}}</a>
+  <a href="/m/profile" {{if eq .Path "/m/profile"}}class="on"{{end}}><span class="ic">👤</span>{{t "Профиль"}}</a>
+</nav>
+</body></html>{{end}}
+
+{{/* Публичные страницы */}}
+{{define "public"}}{{template "head" .}}<title>{{template "title" .}}</title></head>
+<body hx-boost="true">
+<div id="toast" role="alert"></div>
+{{template "content" .}}
+</body></html>{{end}}
+
+{{/* --- общие кусочки --- */}}
+
+{{define "statusBadge"}}<span class="badge {{.Status}}">{{t (status .Status)}}</span>{{if .Overdue}} <span class="badge danger">{{t "Просрочено"}}</span>{{end}}{{end}}
+
+{{define "riskBadge"}}<span class="badge {{.}}">{{t (risk .)}}</span>{{end}}
+
+{{define "assignBadge"}}{{if .SignedAt}}<span class="badge ok">✓ {{date .SignedAt}}</span>{{else if .Overdue}}<span class="badge danger">{{t "Просрочено"}}</span>{{else}}<span class="badge warn">до {{date .DueAt}}</span>{{end}}{{end}}
+
+{{define "photos"}}{{if .}}<div class="gallery">{{range .}}
+  {{if hasSuffix .Path ".mp4"}}<video src="{{.Path}}" controls preload="metadata"></video>{{else}}<a href="{{.Path}}" target="_blank" hx-boost="false"><img src="{{.Path}}" alt="{{if eq .Kind "after"}}После{{else}}До{{end}}" loading="lazy"></a>{{end}}
+{{end}}</div>{{end}}{{end}}
+
+{{define "timeline"}}<ul class="timeline">{{range .}}<li><div>{{.Text}}</div><div class="muted small">{{.User}} · {{datetime .CreatedAt}}</div></li>{{end}}</ul>{{end}}
+
+{{define "sigpad"}}
+<input type="hidden" name="signature">
+<canvas class="pad" data-pad="signature" aria-label="{{t "Распишитесь пальцем"}}"></canvas>
+<div class="row between small"><span class="muted">{{t "Распишитесь пальцем"}}</span><button type="button" class="btn" data-clear="signature">{{t "Очистить"}}</button></div>
+{{end}}

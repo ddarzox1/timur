@@ -1,0 +1,24 @@
+{{define "page"}}{{template "admin" .}}{{end}}
+{{define "title"}}{{t "Настройки"}}{{end}}
+{{define "content"}}
+<h1>{{t "Настройки"}}</h1>
+{{if .Saved}}<div class="success">Сохранено</div>{{end}}
+<div class="grid" style="align-items:start">
+  <form class="card" hx-post="/admin/settings">
+    <h3>Организация</h3>
+    <div class="field"><label for="n">Название</label><input id="n" name="name" value="{{.O.Name}}" required></div>
+    <div class="field"><label for="bin">БИН</label><input id="bin" name="bin" value="{{.O.BIN}}" inputmode="numeric" maxlength="12"></div>
+    <div class="field"><label for="inj">Дата последней травмы</label><input id="inj" type="date" name="last_injury_at" value="{{with .O.LastInjuryAt}}{{.Format "2006-01-02"}}{{end}}">
+      <p class="small muted">Для счётчика «Дней без травм». Пусто — считаем с даты подключения.</p></div>
+    <div class="field"><label for="warn">Предупреждать о повторном инструктаже за, дней</label><input id="warn" type="number" min="1" max="90" name="repeat_warn_days" value="{{.O.RepeatWarnDays}}"></div>
+    <button class="btn primary" type="submit">Сохранить</button>
+  </form>
+  <div class="card">
+    <h3>Тариф</h3>
+    <p>Активных сотрудников: <b>{{.Active}}</b></p>
+    <p>Цена: {{.Price}} ₸ за сотрудника в месяц</p>
+    <p style="font-size:1.5rem;font-weight:800">{{.Total}} ₸ / мес</p>
+    <p class="small muted">Счета и оплата — по запросу: info@qauipsiz.kz</p>
+  </div>
+</div>
+{{end}}

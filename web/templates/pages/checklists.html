@@ -1,0 +1,11 @@
+{{define "page"}}{{template "admin" .}}{{end}}
+{{define "title"}}Шаблоны чек-листов{{end}}
+{{define "content"}}
+<div class="row between"><h1>Шаблоны чек-листов</h1><a class="btn accent" href="/admin/checklists/new">＋ Новый чек-лист</a></div>
+<div class="table-wrap"><table class="rtable">
+  <thead><tr><th>Название</th><th>Объект</th><th>Периодичность</th><th>Пунктов</th><th>Проведено</th></tr></thead>
+  <tbody>{{range .Templates}}<tr>
+    <td><a href="/admin/checklists/{{.ID}}">{{.Title}}</a></td><td>{{or .Location "Все объекты"}}</td><td>{{freq .Frequency}}</td><td>{{.Questions}}</td><td>{{.Runs}}</td>
+  </tr>{{else}}<tr><td colspan="5" class="muted">Чек-листов пока нет.</td></tr>{{end}}</tbody>
+</table></div>
+{{end}}

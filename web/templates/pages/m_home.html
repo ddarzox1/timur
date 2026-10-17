@@ -1,0 +1,42 @@
+{{define "page"}}{{template "mobile" .}}{{end}}
+{{define "title"}}{{t "Главная"}}{{end}}
+{{define "content"}}
+<div class="mhead">
+  <div class="muted small">{{.Me.OrgName}}{{with .Me.Location}} · {{.}}{{end}}</div>
+  <h1 style="margin:.25rem 0 0">{{t "Здравствуйте"}}, {{.Me.Name}}</h1>
+</div>
+<div class="injury"><span>{{t "Дней без травм"}}</span><b>{{.Days}}</b></div>
+
+<h2>{{t "Нужно подписать"}}</h2>
+{{range .Pending}}
+<a class="item {{if .Overdue}}overdue{{end}}" href="/m/inductions/{{.ID}}">
+  <span style="font-size:1.6rem">✍️</span>
+  <span class="grow"><b>{{.TitleIn $.Lang}}</b><br><span class="badge info">{{t (kind .Kind)}}</span> {{template "assignBadge" .}}</span>
+  <span aria-hidden="true">›</span>
+</a>
+{{else}}
+<div class="card success" style="margin:0">{{t "Всё подписано ✓"}}</div>
+{{end}}
+
+<h2>{{t "Мои чек-листы на сегодня"}}</h2>
+{{range .Checklists}}
+<a class="item" href="/m/checklists/{{.ID}}">
+  <span style="font-size:1.6rem">✅</span>
+  <span class="grow"><b>{{.Title}}</b><br><span class="muted small">{{.Questions}} · {{t (freq .Frequency)}}</span></span>
+  {{if .DoneToday}}<span class="badge ok">{{t "Выполнено сегодня"}}</span>{{else}}<span aria-hidden="true">›</span>{{end}}
+</a>
+{{else}}
+<p class="muted">{{t "Нет чек-листов"}}</p>
+{{end}}
+
+<h2>{{t "Мои опасности"}}</h2>
+<a class="item" href="/m/hazards">
+  <span class="grow row">
+    <span class="badge open">{{t "открыто"}}: {{.Open}}</span>
+    <span class="badge fixed">{{t "устранено"}}: {{.Fixed}}</span>
+    {{if .Mine}}<span class="badge warn">{{t "Назначено мне"}}: {{.Mine}}</span>{{end}}
+  </span>
+  <span aria-hidden="true">›</span>
+</a>
+<div style="margin-top:1rem"><a class="btn accent big" href="/m/hazards/new">＋ {{t "Сообщить об опасности"}}</a></div>
+{{end}}

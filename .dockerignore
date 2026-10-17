@@ -1,0 +1,7 @@
+qauipsiz
+uploads/
+.git
+*.md
+.env
+Dockerfile
+docker-compose.yml

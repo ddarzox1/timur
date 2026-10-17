@@ -1,0 +1,39 @@
+{{define "page"}}{{template "admin" .}}{{end}}
+{{define "title"}}Назначить инструктаж{{end}}
+{{define "content"}}
+<h1>Назначить инструктаж</h1>
+<form hx-post="/admin/assign">
+<div class="grid split">
+  <div class="card">
+    <h3>1. Сотрудники</h3>
+    <div class="filters" hx-get="/admin/assign" hx-trigger="change, keyup changed delay:300ms from:input[name=q]" hx-include="this" hx-target="#people" hx-select="#people" hx-swap="outerHTML">
+      <input type="hidden" name="template" value="{{.TemplateID}}">
+      <select name="dept" aria-label="Подразделение"><option value="">Все подразделения</option>{{range .Deps}}<option value="{{.ID}}" {{if eq ($.Q.Get "dept") (printf "%d" .ID)}}selected{{end}}>{{.Name}}</option>{{end}}</select>
+      <select name="loc" aria-label="Объект"><option value="">Все объекты</option>{{range .Locs}}<option value="{{.ID}}" {{if eq ($.Q.Get "loc") (printf "%d" .ID)}}selected{{end}}>{{.Name}}</option>{{end}}</select>
+      <input name="q" value="{{.Q.Get "q"}}" placeholder="ФИО или должность" aria-label="Поиск">
+    </div>
+    <div id="people">
+      <label class="check" style="margin-bottom:.5rem"><input type="checkbox" onclick="document.querySelectorAll('#people [name=user_ids]').forEach(c => c.checked = this.checked)"> Выбрать всех ({{len .People}})</label>
+      <div class="table-wrap" style="max-height:50vh;overflow-y:auto"><table><tbody>
+        {{range .People}}<tr><td style="width:40px"><input type="checkbox" name="user_ids" value="{{.ID}}" id="u{{.ID}}" {{if $.Q.Get "q"}}checked{{end}}></td>
+          <td><label for="u{{.ID}}" style="margin:0;font-weight:500">{{.Name}}</label><div class="small muted">{{.Position}}</div></td>
+          <td class="small muted">{{.Department}}</td><td class="small muted">{{.Location}}</td></tr>
+        {{else}}<tr><td class="muted">Никого не найдено</td></tr>{{end}}
+      </tbody></table></div>
+    </div>
+  </div>
+  <div class="card">
+    <h3>2. Инструктаж и срок</h3>
+    <div class="field"><label for="tpl">Шаблон</label><select id="tpl" name="template_id" required><option value="">— выберите —</option>
+      {{range .Templates}}<option value="{{.ID}}" {{if eq (printf "%d" .ID) $.TemplateID}}selected{{end}}>{{kind .Kind}}: {{.Title}}</option>{{end}}</select></div>
+    <div class="field"><label for="due">Подписать до</label><input id="due" type="date" name="due_at" value="{{.Due}}" required></div>
+    <div class="field"><label for="ins">Инструктирующий</label><select id="ins" name="instructor_id"><option value="">как в шаблоне</option>{{range .Staff}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select></div>
+    <div class="field"><label for="reason">Причина (для внепланового)</label><input id="reason" name="reason"></div>
+    <div class="field"><label>Уведомление</label>
+      <label class="check"><input type="radio" name="notify" value="sms" checked> SMS со ссылкой</label>
+      <label class="check"><input type="radio" name="notify" value="app"> Только в приложении</label></div>
+    <button class="btn accent big" type="submit">Назначить</button>
+  </div>
+</div>
+</form>
+{{end}}

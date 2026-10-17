@@ -1,0 +1,46 @@
+{{define "page"}}{{template "public" .}}{{end}}
+{{define "title"}}{{t "Вход"}} — Qauipsiz{{end}}
+{{define "content"}}
+<div class="auth-box">
+  <div class="row between" style="margin-bottom:1.5rem">
+    <a href="/" class="logo-t">Qauip<span>siz</span></a>
+    {{template "langswitch" .}}
+  </div>
+  <div class="card">{{template "form" .}}</div>
+</div>
+{{end}}
+
+{{define "form"}}
+<div id="login">
+{{if eq .Step "phone"}}
+  <form hx-post="/login/phone" hx-target="#login" hx-swap="outerHTML">
+    <h1>{{t "Вход"}}</h1>
+    {{with .Error}}<div class="error">{{t .}}</div>{{end}}
+    <div class="field">
+      <label for="phone">{{t "Номер телефона"}}</label>
+      <input id="phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="+7 (7__) ___-__-__" value="{{.Phone}}" required autofocus>
+    </div>
+    <button class="btn accent big" type="submit">{{t "Получить код"}}</button>
+  </form>
+{{else}}
+  <form hx-post="/login/code" hx-target="#login" hx-swap="outerHTML">
+    <h1>{{t "Код из SMS"}}</h1>
+    <p class="muted">{{t "Мы отправили код на номер"}} +{{.Phone}}</p>
+    {{with .Fixed}}<p class="badge warn">Тестовый режим: код {{.}}</p>{{end}}
+    {{with .Error}}<div class="error">{{t .}}</div>{{end}}
+    <input type="hidden" name="phone" value="{{.Phone}}">
+    <div class="field">
+      <input class="code-input" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="4" pattern="[0-9]{4}" required autofocus aria-label="{{t "Код из SMS"}}">
+    </div>
+    <button class="btn accent big" type="submit">{{t "Войти"}}</button>
+  </form>
+  <div class="row between small" style="margin-top:1rem">
+    <a href="/login">{{t "Изменить номер"}}</a>
+    {{if .Wait}}
+    <span class="muted">{{t "Отправить снова через"}} <span id="wait">{{.Wait}}</span> {{t "сек"}}</span>
+    <script>(() => { let n = {{.Wait}}; const el = document.getElementById('wait'); const iv = setInterval(() => { n--; if (!el.isConnected) return clearInterval(iv); if (n <= 0) { clearInterval(iv); el.parentElement.outerHTML = '<a href="/login">{{t "Отправить код снова"}}</a>'; } else el.textContent = n; }, 1000); })();</script>
+    {{end}}
+  </div>
+{{end}}
+</div>
+{{end}}

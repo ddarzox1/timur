@@ -1,0 +1,54 @@
+{{define "page"}}{{template "admin" .}}{{end}}
+{{define "title"}}{{t "Оргструктура"}}{{end}}
+{{define "content"}}
+<h1>{{t "Оргструктура"}}</h1>
+<div class="grid cols">
+  <div>
+    <h2 style="margin-top:0">Подразделения</h2>
+    <div class="table-wrap"><table><tbody>
+      {{range .Deps}}<tr>
+        <td style="{{if .ParentID}}padding-left:2rem{{end}}">{{if .ParentID}}└ {{end}}<b>{{.Name}}</b>{{with .Parent}}<div class="small muted">в составе: {{.}}</div>{{end}}</td>
+        <td class="small muted">{{.People}} чел.</td>
+        <td><details><summary class="btn">Изменить</summary>
+          <form hx-post="/admin/org/departments" class="stack" style="margin-top:.5rem;min-width:220px">
+            <input type="hidden" name="id" value="{{.ID}}"><input name="name" value="{{.Name}}" required aria-label="Название">
+            <select name="parent_id" aria-label="Родитель"><option value="">— верхний уровень —</option>{{$p := deref .ParentID}}{{$id := .ID}}{{range $.Deps}}{{if ne .ID $id}}<option value="{{.ID}}" {{if eq .ID $p}}selected{{end}}>{{.Name}}</option>{{end}}{{end}}</select>
+            <div class="row"><button class="btn primary">Сохранить</button>
+              <button class="btn" hx-post="/admin/org/departments/{{.ID}}/delete" hx-confirm="Удалить подразделение «{{.Name}}»? Сотрудники останутся без подразделения.">Удалить</button></div>
+          </form></details></td>
+      </tr>{{else}}<tr><td class="muted">Подразделений нет</td></tr>{{end}}
+    </tbody></table></div>
+    <form class="card row" hx-post="/admin/org/departments" style="margin-top:.75rem">
+      <input name="name" placeholder="Новое подразделение" required class="grow" style="width:auto" aria-label="Название">
+      <select name="parent_id" style="width:auto" aria-label="Родитель"><option value="">— верхний уровень —</option>{{range .Deps}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select>
+      <button class="btn primary">Добавить</button>
+    </form>
+  </div>
+  <div>
+    <h2 style="margin-top:0">Объекты и локации</h2>
+    <div class="table-wrap"><table><tbody>
+      {{range .Locs}}<tr>
+        <td><a href="/admin/org/locations/{{.ID}}">{{.Name}}</a><div class="small muted">{{.Address}}</div></td>
+        <td class="small">{{if .Lat}}📍 {{.RadiusM}} м{{else}}<span class="muted">нет координат</span>{{end}}</td>
+        <td class="small">{{or .Responsible "—"}}</td>
+        <td>{{with .EvacuationPath}}<a href="{{.}}" target="_blank" hx-boost="false" class="small">план эвакуации</a>{{end}}</td>
+      </tr>{{else}}<tr><td class="muted">Объектов нет</td></tr>{{end}}
+    </tbody></table></div>
+    <form class="card" hx-post="/admin/org/locations" hx-encoding="multipart/form-data" style="margin-top:.75rem">
+      <h3>{{if .L.ID}}Объект: {{.L.Name}}{{else}}Новый объект{{end}}</h3>
+      {{if .L.ID}}<input type="hidden" name="id" value="{{.L.ID}}">{{end}}
+      <div class="field"><label for="ln">Название</label><input id="ln" name="name" value="{{.L.Name}}" required></div>
+      <div class="field"><label for="la">Адрес</label><input id="la" name="address" value="{{.L.Address}}"></div>
+      <div class="grid">
+        <div class="field"><label for="lat">Широта</label><input id="lat" name="lat" value="{{with .L.Lat}}{{.}}{{end}}" placeholder="43.2389"></div>
+        <div class="field"><label for="lng">Долгота</label><input id="lng" name="lng" value="{{with .L.Lng}}{{.}}{{end}}" placeholder="76.8897"></div>
+        <div class="field"><label for="rad">Радиус для гео-подписи, м</label><input id="rad" name="radius_m" type="number" min="50" value="{{.L.RadiusM}}"></div>
+      </div>
+      <div class="field"><label for="lr">Ответственный за объект</label><select id="lr" name="responsible_id"><option value="">—</option>{{range .Staff}}<option value="{{.ID}}" {{if eq .ID (deref $.L.ResponsibleID)}}selected{{end}}>{{.Name}}</option>{{end}}</select>
+        <p class="small muted">Получает новые опасности по объекту.</p></div>
+      <div class="field"><label for="ev">План эвакуации (фото или PDF)</label><input id="ev" type="file" name="evacuation" accept="image/*,application/pdf"></div>
+      <div class="row"><button class="btn primary">Сохранить</button>{{if .L.ID}}<a class="btn" href="/admin/org">Отмена</a>{{end}}</div>
+    </form>
+  </div>
+</div>
+{{end}}

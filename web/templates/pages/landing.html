@@ -1,0 +1,104 @@
+{{define "page"}}{{template "public" .}}{{end}}
+{{define "title"}}Qauipsiz — охрана труда без бумажных журналов{{end}}
+{{define "content"}}
+<div class="public">
+  <nav class="pnav">
+    <span class="logo-t">Qauip<span>siz</span></span>
+    <div class="row">
+      {{template "langswitch" .}}
+      {{if .Me}}<a class="btn primary" href="{{if eq .Me.Role "worker"}}/m{{else}}/admin{{end}}">Открыть</a>{{else}}<a class="btn" href="/login">Войти</a>{{end}}
+    </div>
+  </nav>
+
+  <section class="hero">
+    <div>
+      <h1>Охрана труда без бумажных журналов</h1>
+      <p class="muted" style="font-size:1.15rem">Инструктажи с подписью с телефона, опасности и осмотры в одном месте. Журналы готовы к проверке инспекции труда в любой момент.</p>
+      <div class="row" style="margin-top:1.5rem">
+        <a class="btn accent" href="#pilot" hx-boost="false" style="min-height:52px;padding:0 1.5rem">Попробовать бесплатно</a>
+        <a class="btn" href="/login" style="min-height:52px;padding:0 1.5rem">Войти</a>
+      </div>
+    </div>
+    <div class="phone" aria-hidden="true">
+      <div class="small muted">Повторный инструктаж</div>
+      <h3>Работа на высоте</h3>
+      <div class="doc" style="max-height:120px;font-size:.85rem">1. Применять страховочную привязь, закреплённую к анкерной точке.
+2. Перед началом работ осмотреть леса и ограждения…</div>
+      <p class="check small" style="margin:.75rem 0">☑ Я ознакомлен(а) и понял(а) требования</p>
+      <svg viewBox="0 0 260 70" style="background:#fff;border-radius:10px;width:100%"><path d="M15 50c20-35 30-35 35 0s20-40 35-10 25 10 40-5 30 20 50 0 30-10 60-5" stroke="#0f2a4a" stroke-width="3" fill="none" stroke-linecap="round"/></svg>
+      <p><span class="badge ok">📍 Вы на объекте ЖК Алатау</span></p>
+      <div class="btn accent big">Подписать</div>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>Знакомо?</h2>
+    <div class="grid">
+      <div class="card"><h3>📒 Бумажные журналы</h3><p class="muted">Теряются, заполняются задним числом, подписи собирают перед проверкой.</p></div>
+      <div class="card"><h3>🙈 Об опасностях молчат</h3><p class="muted">Рабочие видят нарушения, но сообщить некому, а сообщённое не устраняется.</p></div>
+      <div class="card"><h3>💸 Штрафы при проверке</h3><p class="muted">Нет подписи в журнале — нарушение. Несчастный случай — расследование и ответственность.</p></div>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>Три модуля, которые закрывают основное</h2>
+    <div class="grid">
+      <div class="card"><h3>✍️ Инструктажи</h3><p class="muted">Вводный, первичный, повторный, внеплановый, целевой. Сотрудник читает и расписывается пальцем, с отметкой времени и геолокации. Напоминания о повторных.</p></div>
+      <div class="card"><h3>⚠️ Опасности</h3><p class="muted">Фото → категория → ответственный → срок. Устранение подтверждается фото «после». Ничего не теряется.</p></div>
+      <div class="card"><h3>✅ Чек-листы</h3><p class="muted">Ежедневные осмотры с телефона. Каждое «нет» сразу становится опасностью с ответственным.</p></div>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>Как это работает</h2>
+    <div class="grid steps">
+      <div class="card"><b>Загрузили сотрудников из Excel</b><p class="muted">ФИО, телефон, должность, объект — за 5 минут.</p></div>
+      <div class="card"><b>Назначили инструктаж</b><p class="muted">Шаблону, подразделению или объекту в пару кликов.</p></div>
+      <div class="card"><b>Сотрудник подписал по SMS-ссылке</b><p class="muted">Без приложений и паролей. Вход по коду из SMS.</p></div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="card" style="background:var(--navy);color:#fff;border:0">
+      <h2 style="margin-top:0">Соответствие требованиям РК</h2>
+      <p>Журналы по формам Правил обучения, инструктирования и проверок знаний по вопросам безопасности и охраны труда. Данные хранятся в Казахстане. Интерфейс на русском и казахском.</p>
+    </div>
+  </section>
+
+  <section class="section" id="pilot">
+    <div class="grid">
+      <div class="card">
+        <h2 style="margin-top:0">Цена</h2>
+        <p style="font-size:2rem;font-weight:800;margin:.25rem 0">от {{.Price}} ₸</p>
+        <p class="muted">за сотрудника в месяц. Все модули включены.</p>
+        <p><span class="badge ok">Бесплатный пилот 30 дней</span></p>
+      </div>
+      <div class="card">{{template "pilot" .}}</div>
+    </div>
+  </section>
+
+  <footer class="section row between muted small">
+    <span>© Qauipsiz · info@qauipsiz.kz · +7 700 000 00 00</span>
+    <span>Политика конфиденциальности · {{template "langswitch" .}}</span>
+  </footer>
+</div>
+{{end}}
+
+{{define "pilot"}}
+<div id="pilot-form">
+{{if .Sent}}
+  <h2 style="margin-top:0">Заявка отправлена ✓</h2>
+  <p class="muted">Мы позвоним в течение рабочего дня и подключим пилот.</p>
+{{else}}
+  <form hx-post="/pilot" hx-target="#pilot-form" hx-swap="outerHTML">
+    <h2 style="margin-top:0">Заявка на пилот</h2>
+    {{with .Error}}<div class="error">{{.}}</div>{{end}}
+    <div class="field"><label for="company">Компания</label><input id="company" name="company" required></div>
+    <div class="field"><label for="pname">ФИО</label><input id="pname" name="name" required></div>
+    <div class="field"><label for="pphone">Телефон</label><input id="pphone" name="phone" type="tel" placeholder="+7 7__ ___ __ __" required></div>
+    <div class="field"><label for="emp">Число сотрудников</label><select id="emp" name="employees"><option>до 50</option><option>50–200</option><option>200–1000</option><option>более 1000</option></select></div>
+    <button class="btn accent big" type="submit">Попробовать бесплатно</button>
+  </form>
+{{end}}
+</div>
+{{end}}

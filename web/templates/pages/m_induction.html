@@ -1,0 +1,46 @@
+{{define "page"}}{{template "mobile" .}}{{end}}
+{{define "title"}}{{.A.TitleIn .Lang}}{{end}}
+{{define "content"}}
+<a href="/m">‹ {{t "Назад"}}</a>
+{{if .A.SignedAt}}
+<div class="done-screen">
+  <div class="big">✅</div>
+  <h1>{{t "Инструктаж подписан"}}</h1>
+  <p><b>{{.A.TitleIn .Lang}}</b></p>
+  <p class="muted">{{datetime .A.SignedAt}}</p>
+  {{with .A.GeoOK}}{{if .}}<span class="badge ok">📍 {{t "Вы на объекте"}}</span>{{else}}<span class="badge warn">{{t "Вы вне объекта — подпись будет отмечена"}}</span>{{end}}{{end}}
+  <p><img class="sig" style="height:80px" src="{{safeURL .A.Signature}}" alt="{{t "Подпись"}}"></p>
+  <a class="btn primary big" href="/m">{{t "Главная"}}</a>
+</div>
+{{else}}
+<h1 style="margin-top:.75rem">{{.A.TitleIn .Lang}}</h1>
+<p class="row small"><span class="badge info">{{t (kind .A.Kind)}}</span> {{template "assignBadge" .A}} {{with .A.Instructor}}<span class="muted">{{t "Проводит"}}: {{.}}</span>{{end}}</p>
+{{with .A.Reason}}<p class="muted small">Причина: {{.}}</p>{{end}}
+
+<form data-sign {{if .T.RequireGeo}}data-need-geo="1"{{end}} hx-post="/m/inductions/{{.A.ID}}/sign" hx-encoding="multipart/form-data">
+  {{if .T.Body}}<div class="doc" tabindex="0">{{.T.Body}}</div>
+  <p class="muted small">{{t "Прочитайте до конца, чтобы подписать"}}</p>{{end}}
+  {{with .T.FilePath}}
+    {{if hasSuffix . ".mp4"}}<video src="{{.}}" controls style="width:100%;border-radius:12px"></video>
+    {{else}}<p><a class="btn" href="{{.}}" target="_blank" hx-boost="false">📄 {{t "Открыть документ"}}</a></p>{{end}}
+  {{end}}
+
+  <label class="check" style="margin:1rem 0"><input type="checkbox" name="agree" value="1"> {{t "Я ознакомлен(а) и понял(а) требования"}}</label>
+
+  <label>{{t "Подпись"}}</label>
+  {{template "sigpad" .}}
+
+  {{if .T.RequireSelfie}}
+  <div class="field" style="margin-top:1rem"><label for="selfie">{{t "Селфи"}}</label><input id="selfie" type="file" name="selfie" accept="image/*" capture="user" required></div>
+  {{end}}
+
+  <input type="hidden" name="lat"><input type="hidden" name="lng">
+  <p><span class="badge" data-geo
+    {{with .Loc}}{{if .Lat}}data-lat="{{.Lat}}" data-lng="{{.Lng}}" data-radius="{{.RadiusM}}"{{end}}{{end}}
+    data-ok="📍 {{t "Вы на объекте"}}{{with .Loc}} {{.Name}}{{end}} ✓" data-out="{{t "Вы вне объекта — подпись будет отмечена"}}"
+    data-na="{{t "Геолокация недоступна"}}">{{t "Определяем местоположение…"}}</span></p>
+
+  <div class="sticky-bottom"><button class="btn accent big" type="submit" disabled>{{t "Подписать"}}</button></div>
+</form>
+{{end}}
+{{end}}

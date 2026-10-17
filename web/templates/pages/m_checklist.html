@@ -1,0 +1,31 @@
+{{define "page"}}{{template "mobile" .}}{{end}}
+{{define "title"}}{{.T.Title}}{{end}}
+{{define "content"}}
+<a href="/m/checklists">‹ {{t "Назад"}}</a>
+<h1 style="margin-top:.75rem">{{.T.Title}}</h1>
+<p class="muted small">{{or .T.Location .Me.Location}} · {{.T.Questions}}</p>
+<form hx-post="/m/checklists/{{.T.ID}}" hx-encoding="multipart/form-data">
+{{range $i, $it := .T.Items}}
+  {{if eq $it.Type "section"}}
+  <div class="section-title">{{$it.Text}}</div>
+  {{else}}
+  <fieldset class="card q" style="margin:0 0 .5rem">
+    <legend class="sr" style="float:left;font-weight:600;margin-bottom:.6rem;padding:0">{{$it.Text}}</legend>
+    <div class="seg" style="clear:both">
+      <label class="yes"><input type="radio" name="a{{$i}}" value="yes" required><span>{{t "Да"}}</span></label>
+      <label class="no"><input type="radio" name="a{{$i}}" value="no"><span>{{t "Нет"}}</span></label>
+      <label class="na"><input type="radio" name="a{{$i}}" value="na"><span>{{t "Н/П"}}</span></label>
+    </div>
+    <div class="extra">
+      <div class="field"><label for="p{{$i}}">📷 {{t "Фото"}}</label><input id="p{{$i}}" type="file" name="p{{$i}}" accept="image/*" capture="environment"></div>
+      <div class="field"><label for="c{{$i}}">{{t "Комментарий"}}</label><input id="c{{$i}}" name="c{{$i}}"></div>
+      {{if $it.HazardOnNo}}<label class="check"><input type="checkbox" name="h{{$i}}" value="1" checked> {{t "Создать опасность"}}</label>{{end}}
+    </div>
+  </fieldset>
+  {{end}}
+{{end}}
+  <h2>{{t "Подпись проверяющего"}}</h2>
+  {{template "sigpad" .}}
+  <div class="sticky-bottom"><button class="btn accent big" type="submit">{{t "Завершить"}}</button></div>
+</form>
+{{end}}

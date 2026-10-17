@@ -1,0 +1,21 @@
+{{define "page"}}{{template "admin" .}}{{end}}
+{{define "title"}}Шаблоны инструктажей{{end}}
+{{define "content"}}
+<div class="row between">
+  <h1>Шаблоны инструктажей</h1>
+  <a class="btn accent" href="/admin/inductions/new">＋ Новый шаблон</a>
+</div>
+<div class="table-wrap"><table class="rtable">
+  <thead><tr><th>Название</th><th>Вид</th><th>Повтор</th><th>Проводит</th><th>Назначено</th><th></th></tr></thead>
+  <tbody>
+  {{range .Templates}}<tr>
+    <td><a href="/admin/inductions/{{.ID}}">{{.Title}}</a>{{with .TitleKK}}<div class="small muted">{{.}}</div>{{end}}</td>
+    <td><span class="badge info">{{kind .Kind}}</span></td>
+    <td>{{if .RepeatMonths}}каждые {{.RepeatMonths}} мес.{{else}}—{{end}}</td>
+    <td>{{or .Instructor "—"}}</td>
+    <td>{{.Assigned}}</td>
+    <td><a class="btn" href="/admin/assign?template={{.ID}}">Назначить</a></td>
+  </tr>{{else}}<tr><td colspan="6" class="muted">Шаблонов пока нет. Создайте первый — например, вводный инструктаж.</td></tr>{{end}}
+  </tbody>
+</table></div>
+{{end}}

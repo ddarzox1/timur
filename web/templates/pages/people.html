@@ -1,0 +1,39 @@
+{{define "page"}}{{template "admin" .}}{{end}}
+{{define "title"}}{{t "Сотрудники"}}{{end}}
+{{define "content"}}
+<div class="row between">
+  <h1>{{t "Сотрудники"}}</h1>
+  <div class="row">
+    <a class="btn accent" href="/admin/people/new">＋ Добавить</a>
+    <button class="btn" onclick="document.getElementById('imp').showModal()">⬆ Импорт из Excel</button>
+  </div>
+</div>
+{{with .Imported}}<div class="success">Импортировано: {{.}}</div>{{end}}
+{{if .Errors}}<div class="error">{{range .Errors}}<div>{{.}}</div>{{end}}</div>{{end}}
+<form class="filters" hx-get="/admin/people" hx-trigger="change, keyup changed delay:300ms from:input[name=q]" hx-target="#tbl" hx-select="#tbl" hx-swap="outerHTML" hx-push-url="true">
+  <input name="q" value="{{.Q.Get "q"}}" placeholder="ФИО, телефон, должность" aria-label="Поиск">
+  <select name="dept" aria-label="Подразделение"><option value="">Все подразделения</option>{{range .Deps}}<option value="{{.ID}}" {{if eq ($.Q.Get "dept") (printf "%d" .ID)}}selected{{end}}>{{.Name}}</option>{{end}}</select>
+  <select name="loc" aria-label="Объект"><option value="">Все объекты</option>{{range .Locs}}<option value="{{.ID}}" {{if eq ($.Q.Get "loc") (printf "%d" .ID)}}selected{{end}}>{{.Name}}</option>{{end}}</select>
+</form>
+<div class="table-wrap" id="tbl"><table class="rtable">
+  <thead><tr><th>ФИО</th><th>Телефон</th><th>Должность</th><th>Подразделение</th><th>Объект</th><th>Роль</th><th>Инструктажи</th></tr></thead>
+  <tbody>{{range .People}}<tr {{if not .Active}}style="opacity:.5"{{end}}>
+    <td><a href="/admin/people/{{.ID}}">{{.Name}}</a>{{if not .Active}} <span class="badge">отключён</span>{{end}}</td>
+    <td>+{{.Phone}}</td><td>{{.Position}}</td><td>{{.Department}}</td><td>{{.Location}}</td><td>{{role .Role}}</td>
+    <td>{{if .Overdue}}<span class="badge danger">просрочен</span>{{else}}<span class="badge ok">всё ок</span>{{end}}</td>
+  </tr>{{else}}<tr><td colspan="7" class="muted">Сотрудников нет. Добавьте вручную или импортируйте из Excel.</td></tr>{{end}}</tbody>
+</table></div>
+
+<dialog id="imp" class="card" style="max-width:520px;width:100%">
+  <form hx-post="/admin/people/import" hx-encoding="multipart/form-data">
+    <h3>Импорт сотрудников</h3>
+    <ol class="small">
+      <li><a href="/admin/people/template.csv" hx-boost="false">Скачайте шаблон</a> и заполните в Excel: ФИО, телефон, год рождения, должность, подразделение, объект.</li>
+      <li>Сохраните как «CSV (разделители — точка с запятой)».</li>
+      <li>Загрузите файл. Новые подразделения и объекты создадутся автоматически, существующие телефоны обновятся.</li>
+    </ol>
+    <div class="field"><input type="file" name="file" accept=".csv,text/csv" required aria-label="CSV-файл"></div>
+    <div class="row"><button class="btn primary" type="submit">Импортировать</button><button class="btn" type="button" onclick="this.closest('dialog').close()">Отмена</button></div>
+  </form>
+</dialog>
+{{end}}

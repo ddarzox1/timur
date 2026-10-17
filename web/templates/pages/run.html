@@ -1,0 +1,19 @@
+{{define "page"}}{{template "admin" .}}{{end}}
+{{define "title"}}{{.R.Title}}{{end}}
+{{define "content"}}
+<p><a href="/admin/runs">‹ Результаты</a></p>
+<div class="row between"><h1>{{.R.Title}}</h1><button class="btn" onclick="print()">🖨 PDF / печать</button></div>
+<p class="muted">{{.R.Location}} · {{.R.UserName}} · {{datetime .R.CreatedAt}} · несоответствий: <b>{{.R.Issues}}</b> из {{.R.Total}}</p>
+<div class="table-wrap"><table>
+  <tbody>{{range .R.Answers}}
+  {{if .Section}}<tr><th colspan="4">{{.Text}}</th></tr>
+  {{else}}<tr>
+    <td>{{.Text}}{{with .Comment}}<div class="small muted">{{.}}</div>{{end}}</td>
+    <td>{{if eq .Value "yes"}}<span class="badge ok">Да</span>{{else if eq .Value "no"}}<span class="badge danger">Нет</span>{{else}}<span class="badge">Н/П</span>{{end}}</td>
+    <td>{{with .Photo}}<a href="{{.}}" target="_blank" hx-boost="false"><img class="thumb" src="{{.}}" alt="Фото"></a>{{end}}</td>
+    <td>{{with .HazardID}}<a href="/admin/hazards/{{.}}">Опасность №{{.}}</a>{{end}}</td>
+  </tr>{{end}}
+  {{end}}</tbody>
+</table></div>
+<p>Подпись проверяющего: <img class="sig" style="height:60px;vertical-align:middle" src="{{safeURL .R.Signature}}" alt="Подпись"></p>
+{{end}}

@@ -1,0 +1,41 @@
+{{define "page"}}{{template "admin" .}}{{end}}
+{{define "title"}}{{if .T.ID}}{{.T.Title}}{{else}}Новый шаблон{{end}}{{end}}
+{{define "content"}}
+<p><a href="/admin/inductions">‹ Шаблоны</a></p>
+<h1>{{if .T.ID}}Шаблон инструктажа{{else}}Новый шаблон инструктажа{{end}}</h1>
+<div class="grid split">
+  <form class="card" hx-post="/admin/inductions/save" hx-encoding="multipart/form-data">
+    {{if .T.ID}}<input type="hidden" name="id" value="{{.T.ID}}">{{end}}
+    <div class="grid">
+      <div class="field"><label for="title">Название (RU)</label><input id="title" name="title" value="{{.T.Title}}" required></div>
+      <div class="field"><label for="tkk">Атауы (ҚАЗ)</label><input id="tkk" name="title_kk" value="{{.T.TitleKK}}"></div>
+    </div>
+    <div class="grid">
+      <div class="field"><label for="kind">Вид</label><select id="kind" name="kind">{{range kinds}}<option value="{{.}}" {{if eq . $.T.Kind}}selected{{end}}>{{kind .}}</option>{{end}}</select></div>
+      <div class="field"><label for="rep">Периодичность повтора</label><select id="rep" name="repeat_months">
+        {{range $m := ints 0 3 6 12}}<option value="{{$m}}" {{if eq $m $.T.RepeatMonths}}selected{{end}}>{{if $m}}каждые {{$m}} мес.{{else}}без повтора{{end}}</option>{{end}}</select></div>
+      <div class="field"><label for="ins">Кто проводит</label><select id="ins" name="instructor_id"><option value="">—</option>
+        {{range .Staff}}<option value="{{.ID}}" {{if eq .ID (deref $.T.InstructorID)}}selected{{end}}>{{.Name}} · {{.Position}}</option>{{end}}</select></div>
+    </div>
+    <div class="field"><label for="body">Содержание</label><textarea id="body" name="body" style="min-height:260px">{{.T.Body}}</textarea></div>
+    <div class="field"><label for="file">PDF или видео (mp4)</label><input id="file" type="file" name="file" accept="application/pdf,video/mp4">
+      {{with .T.FilePath}}<p class="small">Загружен: <a href="{{.}}" target="_blank" hx-boost="false">открыть</a></p>{{end}}</div>
+    <h3>Требования к подписи</h3>
+    <label class="check field"><input type="checkbox" name="require_geo" value="1" {{if .T.RequireGeo}}checked{{end}}> Обязательна геолокация</label>
+    <label class="check field"><input type="checkbox" name="require_selfie" value="1" {{if .T.RequireSelfie}}checked{{end}}> Обязательно селфи</label>
+    <button class="btn primary" type="submit">Сохранить</button>
+    {{if .T.ID}}<a class="btn" href="/admin/assign?template={{.T.ID}}">Назначить сотрудникам</a>{{end}}
+  </form>
+  <div>
+    <p class="muted small">Как увидит сотрудник</p>
+    <div class="phone">
+      <h3>{{or .T.Title "Название инструктажа"}}</h3>
+      <span class="badge info">{{kind .T.Kind}}</span>
+      <div class="doc" style="max-height:240px;font-size:.85rem;margin-top:.5rem">{{or .T.Body "Текст инструктажа…"}}</div>
+      <p class="check small">☐ Я ознакомлен(а) и понял(а) требования</p>
+      <div class="pad" style="height:80px"></div>
+      <div class="btn accent big" style="margin-top:.5rem">Подписать</div>
+    </div>
+  </div>
+</div>
+{{end}}

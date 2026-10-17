@@ -1,0 +1,20 @@
+{{define "page"}}{{template "mobile" .}}{{end}}
+{{define "title"}}{{t "Профиль"}}{{end}}
+{{define "content"}}
+<div class="mhead">
+  <h1 style="margin:0">{{.Me.Name}}</h1>
+  <div class="muted">{{.Me.Position}}</div>
+</div>
+<div class="card">
+  <div class="small muted">{{t "Подразделение"}}</div><div>{{or .Me.Department "—"}}</div>
+  <div class="small muted" style="margin-top:.5rem">{{t "Объект"}}</div><div>{{or .Me.Location "—"}}</div>
+  <div class="small muted" style="margin-top:.5rem">{{t "Телефон"}}</div><div>+{{.Me.Phone}}</div>
+</div>
+<div class="card row between"><span>{{t "Язык"}}</span>{{template "langswitch" .}}</div>
+<h2>{{t "Подписанные инструктажи"}}</h2>
+{{range .Signed}}
+<div class="item"><span class="grow"><b>{{.TitleIn $.Lang}}</b><br><span class="small muted">{{t (kind .Kind)}} · {{datetime .SignedAt}}</span></span><span class="badge ok">✓</span></div>
+{{else}}<p class="muted">{{t "Пока ничего нет"}}</p>{{end}}
+{{if ne .Me.Role "worker"}}<p><a class="btn big" href="/admin">Панель инженера ОТ</a></p>{{end}}
+<form method="post" action="/logout" style="margin-top:1.5rem"><button class="btn big">{{t "Выйти"}}</button></form>
+{{end}}

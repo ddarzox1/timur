@@ -1,0 +1,39 @@
+{{define "page"}}{{template "admin" .}}{{end}}
+{{define "title"}}{{or .P.Name "Новый сотрудник"}}{{end}}
+{{define "content"}}
+<p><a href="/admin/people">‹ Сотрудники</a></p>
+<h1>{{or .P.Name "Новый сотрудник"}}</h1>
+<div class="grid cols">
+<form class="card" hx-post="/admin/people/save">
+  {{if .P.ID}}<input type="hidden" name="id" value="{{.P.ID}}">{{end}}
+  <div class="field"><label for="name">ФИО</label><input id="name" name="name" value="{{.P.Name}}" required></div>
+  <div class="grid">
+    <div class="field"><label for="phone">Телефон</label><input id="phone" name="phone" type="tel" value="{{if .P.Phone}}+{{.P.Phone}}{{end}}" placeholder="+7 7__ ___ __ __" required></div>
+    <div class="field"><label for="by">Год рождения</label><input id="by" name="birth_year" type="number" min="1940" max="2015" value="{{with .P.BirthYear}}{{.}}{{end}}"></div>
+  </div>
+  <div class="field"><label for="pos">Должность</label><input id="pos" name="position" value="{{.P.Position}}"></div>
+  <div class="grid">
+    <div class="field"><label for="dep">Подразделение</label><select id="dep" name="department_id"><option value="">—</option>{{range .Deps}}<option value="{{.ID}}" {{if eq .ID (deref $.P.DepartmentID)}}selected{{end}}>{{.Name}}</option>{{end}}</select></div>
+    <div class="field"><label for="loc">Объект</label><select id="loc" name="location_id"><option value="">—</option>{{range .Locs}}<option value="{{.ID}}" {{if eq .ID (deref $.P.LocationID)}}selected{{end}}>{{.Name}}</option>{{end}}</select></div>
+  </div>
+  <div class="field"><label for="role">Роль</label><select id="role" name="role">{{range $k := strs "worker" "hse" "admin"}}<option value="{{$k}}" {{if eq $k $.P.Role}}selected{{end}}>{{role $k}}</option>{{end}}</select>
+    <p class="small muted">Сотрудник — мобильная версия. Инженер ОТ — всё, кроме настроек. Администратор — всё.</p></div>
+  <label class="check field"><input type="checkbox" name="active" value="1" {{if .P.Active}}checked{{end}}> Активен (может входить)</label>
+  <button class="btn primary" type="submit">Сохранить</button>
+</form>
+{{if .P.ID}}
+<div>
+  <div class="row between"><h2 style="margin-top:0">Инструктажи</h2><a class="btn" href="/admin/assign?q={{.P.Name}}">Назначить</a></div>
+  <div class="table-wrap"><table><tbody>
+    {{range .Inductions}}<tr><td>{{.Title}}<div class="small muted">{{kind .Kind}}</div></td><td>{{template "assignBadge" .}}</td></tr>
+    {{else}}<tr><td class="muted">Нет инструктажей</td></tr>{{end}}
+  </tbody></table></div>
+  <h2>Опасности</h2>
+  <div class="table-wrap"><table><tbody>
+    {{range .Hazards}}<tr><td><a href="/admin/hazards/{{.ID}}">№{{.ID}} {{cat .Category}}</a></td><td>{{template "statusBadge" .}}</td></tr>
+    {{else}}<tr><td class="muted">Нет</td></tr>{{end}}
+  </tbody></table></div>
+</div>
+{{end}}
+</div>
+{{end}}

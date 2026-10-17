@@ -1,0 +1,35 @@
+{{define "page"}}{{template "admin" .}}{{end}}
+{{define "title"}}№{{.H.ID}}{{end}}
+{{define "content"}}
+<p><a href="/admin/hazards">‹ Все опасности</a></p>
+<div class="row between">
+  <h1>{{catIcon .H.Category}} №{{.H.ID}} · {{cat .H.Category}}</h1>
+  <button class="btn" onclick="print()">🖨 Печать</button>
+</div>
+<p class="row">{{template "statusBadge" .H}} {{template "riskBadge" .H.Risk}} <span class="muted small">{{datetime .H.CreatedAt}} · {{or .H.Author "Аноним"}}</span></p>
+<div class="grid cols">
+  <div>
+    <div class="card">
+      <p style="margin-top:0;font-size:1.05rem">{{.H.Description}}</p>
+      <p class="muted">📍 {{or .H.Location "—"}}{{with .H.Place}}, {{.}}{{end}}
+        {{if .H.Lat}} · <a href="https://2gis.kz/geo/{{.H.Lng}},{{.H.Lat}}" target="_blank" hx-boost="false">карта</a>{{end}}</p>
+      {{template "photos" .Photos}}
+    </div>
+    <h2>История</h2>
+    {{template "timeline" .Events}}
+    <form hx-post="/admin/hazards/{{.H.ID}}/comment" class="row" style="margin-top:1rem">
+      <input class="grow" name="text" placeholder="Комментарий" required style="width:auto"><button class="btn">Отправить</button>
+    </form>
+  </div>
+  <form class="card" hx-post="/admin/hazards/{{.H.ID}}">
+    <h3>Управление</h3>
+    <div class="field"><label for="resp">Ответственный</label>
+      <select id="resp" name="responsible_id"><option value="">— не назначен —</option>{{range .Staff}}<option value="{{.ID}}" {{if eq .ID (deref $.H.ResponsibleID)}}selected{{end}}>{{.Name}} · {{.Position}}</option>{{end}}</select></div>
+    <div class="field"><label for="due">Срок устранения</label><input id="due" type="date" name="due_at" value="{{if .H.DueAt}}{{.H.DueAt.Format "2006-01-02"}}{{end}}"></div>
+    <div class="field"><label for="risk">Риск</label><select id="risk" name="risk">{{range $k := strs "low" "medium" "high"}}<option value="{{$k}}" {{if eq $.H.Risk $k}}selected{{end}}>{{risk $k}}</option>{{end}}</select></div>
+    <div class="field"><label for="st">Статус</label><select id="st" name="status">{{range $k := strs "open" "in_progress" "fixed" "rejected"}}<option value="{{$k}}" {{if eq $.H.Status $k}}selected{{end}}>{{status $k}}{{if eq $k "rejected"}} (не опасность){{end}}</option>{{end}}</select></div>
+    <div class="field"><label for="act">Корректирующее действие</label><textarea id="act" name="action">{{.H.Action}}</textarea></div>
+    <button class="btn primary big" type="submit">Сохранить</button>
+  </form>
+</div>
+{{end}}

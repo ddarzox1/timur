@@ -1,0 +1,13 @@
+{{define "page"}}{{template "admin" .}}{{end}}
+{{define "title"}}Результаты осмотров{{end}}
+{{define "content"}}
+<h1>Результаты осмотров</h1>
+<div class="table-wrap"><table class="rtable">
+  <thead><tr><th>Чек-лист</th><th>Объект</th><th>Проверяющий</th><th>Дата</th><th>Соответствие</th><th>Несоответствий</th></tr></thead>
+  <tbody>{{range .Runs}}<tr>
+    <td><a href="/admin/runs/{{.ID}}">{{.Title}}</a></td><td>{{.Location}}</td><td>{{.UserName}}</td><td>{{datetime .CreatedAt}}</td>
+    <td>{{$p := pct (sub .Total .Issues) .Total}}<span class="badge {{if ge $p 90}}ok{{else if ge $p 70}}warn{{else}}danger{{end}}">{{$p}}%</span></td>
+    <td>{{.Issues}}</td>
+  </tr>{{else}}<tr><td colspan="6" class="muted">Осмотров пока не было. Сотрудники проходят чек-листы в мобильной версии.</td></tr>{{end}}</tbody>
+</table></div>
+{{end}}

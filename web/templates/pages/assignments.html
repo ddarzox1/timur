@@ -1,0 +1,25 @@
+{{define "page"}}{{template "admin" .}}{{end}}
+{{define "title"}}Назначения{{end}}
+{{define "content"}}
+<div class="row between"><h1>Назначения</h1><a class="btn accent" href="/admin/assign">＋ Назначить</a></div>
+{{with .Assigned}}<div class="success">Назначено сотрудникам: {{.}}</div>{{end}}
+<div class="table-wrap"><table class="rtable">
+  <thead><tr><th>Инструктаж</th><th>Назначен</th><th>Срок</th><th>Подписали</th><th></th></tr></thead>
+  <tbody>
+  {{range .Batches}}<tr>
+    <td><a href="/admin/assignments?batch={{.Batch}}">{{.Title}}</a> <span class="badge info">{{kind .Kind}}</span></td>
+    <td>{{date .AssignedAt}}</td><td>{{date .DueAt}}</td>
+    <td style="min-width:180px"><div class="hbar" style="grid-template-columns:1fr 70px;margin:0"><div class="track"><div class="fill" style="width:{{pct .Signed .Total}}%;background:var(--ok)"></div></div><b>{{.Signed}}/{{.Total}}</b></div></td>
+    <td>{{if lt .Signed .Total}}<form hx-post="/admin/assignments/{{.Batch}}/remind" hx-swap="outerHTML"><button class="btn">Напомнить неподписавшим</button></form>{{else}}<span class="badge ok">Все подписали</span>{{end}}</td>
+  </tr>{{else}}<tr><td colspan="5" class="muted">Назначений пока нет.</td></tr>{{end}}
+  </tbody>
+</table></div>
+{{if .Rows}}
+<h2>Сотрудники</h2>
+<div class="table-wrap"><table>
+  <thead><tr><th>ФИО</th><th>Должность</th><th>Подразделение</th><th>Статус</th><th>Подпись</th></tr></thead>
+  <tbody>{{range .Rows}}<tr><td>{{.UserName}}</td><td>{{.Position}}</td><td>{{.Department}}</td><td>{{template "assignBadge" .}}</td>
+    <td>{{if .Signature}}<img class="sig" src="{{safeURL .Signature}}" alt="Подпись">{{end}}</td></tr>{{end}}</tbody>
+</table></div>
+{{end}}
+{{end}}

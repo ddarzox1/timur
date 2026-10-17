@@ -1,0 +1,43 @@
+{{define "page"}}{{template "admin" .}}{{end}}
+{{define "title"}}Журналы инструктажей{{end}}
+{{define "content"}}
+<h1>Журналы инструктажей</h1>
+<div class="row" style="margin-bottom:1rem">
+  <a class="btn {{if not .Workplace}}primary{{end}}" href="/admin/journals">Журнал вводного инструктажа</a>
+  <a class="btn {{if .Workplace}}primary{{end}}" href="/admin/journals?journal=workplace">Журнал инструктажа на рабочем месте</a>
+</div>
+<form class="filters" hx-get="/admin/journals" hx-trigger="change, keyup changed delay:300ms from:input[name=q]" hx-target="#jwrap" hx-select="#jwrap" hx-swap="outerHTML" hx-push-url="true">
+  <input type="hidden" name="journal" value="{{.Q.Get "journal"}}">
+  <input type="date" name="from" value="{{.Q.Get "from"}}" aria-label="С">
+  <input type="date" name="to" value="{{.Q.Get "to"}}" aria-label="По">
+  <select name="dept" aria-label="Подразделение"><option value="">Все подразделения</option>{{range .Deps}}<option value="{{.ID}}" {{if eq ($.Q.Get "dept") (printf "%d" .ID)}}selected{{end}}>{{.Name}}</option>{{end}}</select>
+  <input name="q" value="{{.Q.Get "q"}}" placeholder="Сотрудник" aria-label="Сотрудник">
+</form>
+<div id="jwrap">
+  <div class="row" style="margin-bottom:.75rem">
+    <a class="btn" href="/admin/journals/print?{{.Q.Encode}}" target="_blank" hx-boost="false">🖨 PDF / печать</a>
+    <a class="btn" href="/admin/journals.csv?{{.Q.Encode}}" hx-boost="false">⬇ Excel (CSV)</a>
+    <span class="muted small">Записей: {{len .Rows}}</span>
+  </div>
+  <div class="table-wrap">{{template "jtable" .}}</div>
+</div>
+{{end}}
+
+{{define "jtable"}}
+<table class="journal">
+  <thead><tr>
+    <th>Дата</th><th>ФИО инструктируемого</th><th>Год рождения</th><th>Профессия, должность</th>
+    {{if .Workplace}}<th>Вид инструктажа</th><th>Причина внепланового</th>{{else}}<th>Подразделение</th>{{end}}
+    <th>ФИО, должность инструктирующего</th><th>Подпись инструктирующего</th><th>Подпись инструктируемого</th>
+  </tr></thead>
+  <tbody>
+  {{range .Rows}}<tr>
+    <td>{{date .SignedAt}}</td><td>{{.UserName}}</td><td>{{with .BirthYear}}{{.}}{{end}}</td><td>{{.Position}}</td>
+    {{if $.Workplace}}<td>{{kind .Kind}}<div class="small muted">{{.Title}}</div></td><td>{{.Reason}}</td>{{else}}<td>{{.Department}}</td>{{end}}
+    <td>{{.Instructor}}{{with .InstructorPos}}, {{.}}{{end}}</td>
+    <td class="small muted">эл. назначение</td>
+    <td><img class="sig" src="{{safeURL .Signature}}" alt="Подпись {{.UserName}}" title="{{datetime .SignedAt}}{{with .GeoOK}}{{if .}} · на объекте{{else}} · вне объекта{{end}}{{end}}"></td>
+  </tr>{{else}}<tr><td colspan="9" class="muted">Подписанных инструктажей за период нет.</td></tr>{{end}}
+  </tbody>
+</table>
+{{end}}

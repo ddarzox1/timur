@@ -1,0 +1,38 @@
+{{define "page"}}{{template "mobile" .}}{{end}}
+{{define "title"}}{{t "Сообщить об опасности"}}{{end}}
+{{define "content"}}
+<a href="/m">‹ {{t "Назад"}}</a>
+<h1 style="margin-top:.75rem">{{t "Сообщить об опасности"}}</h1>
+<form hx-post="/m/hazards" hx-encoding="multipart/form-data">
+  <div class="field">
+    <label for="photos">📷 {{t "Фото и видео"}}</label>
+    <input id="photos" type="file" name="photos" accept="image/*,video/mp4" capture="environment" multiple>
+    <p class="muted small">До 5 файлов</p>
+  </div>
+  <fieldset class="field" style="border:0;padding:0;margin:0 0 1rem">
+    <legend><label>{{t "Категория"}}</label></legend>
+    <div class="tiles">
+      {{range cats}}<label class="tile"><input type="radio" name="category" value="{{.Key}}" required><span><span aria-hidden="true">{{.Icon}}</span>{{t .Label}}</span></label>{{end}}
+    </div>
+  </fieldset>
+  <div class="field">
+    <label for="desc">{{t "Описание"}}</label>
+    <textarea id="desc" name="description" placeholder="{{t "Что не так? Где именно?"}}" required></textarea>
+  </div>
+  <div class="field">
+    <label for="loc">{{t "Объект"}}</label>
+    <select id="loc" name="location_id">{{range .Locs}}<option value="{{.ID}}" {{if eq .ID (deref $.Me.LocationID)}}selected{{end}}>{{.Name}}</option>{{end}}</select>
+  </div>
+  <div class="field"><label for="place">{{t "Уточнение места"}}</label><input id="place" name="place" placeholder="Секция Б, 5 этаж"></div>
+  <fieldset class="field" style="border:0;padding:0;margin:0 0 1rem">
+    <legend><label>{{t "Уровень риска"}}</label></legend>
+    <div class="seg">
+      <label class="low"><input type="radio" name="risk" value="low" required><span>{{t "Низкий"}}</span></label>
+      <label class="medium"><input type="radio" name="risk" value="medium" checked><span>{{t "Средний"}}</span></label>
+      <label class="high"><input type="radio" name="risk" value="high"><span>{{t "Высокий"}}</span></label>
+    </div>
+  </fieldset>
+  <label class="check field"><input type="checkbox" name="anonymous" value="1"> {{t "Отправить анонимно"}}</label>
+  <div class="sticky-bottom"><button class="btn accent big" type="submit">{{t "Отправить"}}</button></div>
+</form>
+{{end}}
