@@ -69,6 +69,22 @@
     setupInput: setupInput,
   };
 
+  // Автоинициализация при загрузке страницы: раньше поле #phone ждало события htmx:load
+  // из app.js, которое на обычной (не htmx-boosted) загрузке срабатывает не всегда —
+  // из-за этого маска на /login иногда не применялась вообще. Теперь скрипт сам
+  // проставляет маску на все input[type=tel], как только DOM готов; app.js
+  // по-прежнему довешивает её на поля, подгруженные через htmx позже.
+  if (typeof document !== 'undefined') {
+    var initAll = function() {
+      document.querySelectorAll('input[type=tel]').forEach(setupInput);
+    };
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initAll);
+    } else {
+      initAll();
+    }
+  }
+
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = root.QPhone;
   }
