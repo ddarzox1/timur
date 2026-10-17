@@ -68,7 +68,7 @@ func Seed(ctx context.Context, db *pgxpool.Pool) error {
 			return qerr
 		}
 		for _, h := range []int64{h1, h2} {
-			if _, err := tx.Exec(ctx, `INSERT INTO hazard_events (hazard_id, user_id, text) SELECT id, author_id, 'Создано' FROM hazards WHERE id = $1`, h); err != nil {
+			if _, err := tx.Exec(ctx, `INSERT INTO hazard_events (hazard_id, user_id, text, created_at) SELECT id, author_id, 'Создано', created_at FROM hazards WHERE id = $1`, h); err != nil {
 				return err
 			}
 		}
