@@ -97,7 +97,5 @@ func (h *Handler) file(w http.ResponseWriter, r *http.Request, u domain.User) er
 	if r.PathValue("org") != strconv.FormatInt(u.OrgID, 10) {
 		return domain.ErrNotFound
 	}
-	w.Header().Set("Cache-Control", "private, max-age=86400")
-	http.ServeFile(w, r, h.files.Path(u.OrgID, r.PathValue("name")))
-	return nil
+	return h.files.Serve(w, r, u.OrgID, r.PathValue("name"))
 }

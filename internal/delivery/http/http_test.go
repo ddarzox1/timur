@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"html"
 	"io"
 	"math/rand/v2"
 	"mime/multipart"
@@ -44,7 +45,10 @@ type env struct {
 	db  *pgxpool.Pool
 }
 
-func setup(t *testing.T) env {
+func setup(t *testing.T) env { return setupWith(t, nil) }
+
+// setupWith — тот же стек, но с подменённым хранилищем файлов (nil — диск во временной папке).
+func setupWith(t *testing.T, fs httpdelivery.FileServer) env {
 	t.Helper()
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
@@ -56,6 +60,9 @@ func setup(t *testing.T) env {
 	}
 	t.Cleanup(pool.Close)
 	store, files := postgres.New(pool), storage.Local{Dir: t.TempDir()}
+	if fs == nil {
+		fs = files
+	}
 	hz := hazard.New(store, store, files)
 	h := httpdelivery.New(httpdelivery.Services{
 		Auth:       auth.New(store, nopSMS{}, "1111"),
@@ -65,7 +72,7 @@ func setup(t *testing.T) env {
 		People:     people.New(store, files),
 		Dashboard:  dashboard.New(store),
 		Pilot:      pilot.New(store),
-	}, files, httpdelivery.Options{PricePerUser: 990})
+	}, fs, httpdelivery.Options{PricePerUser: 9990, FilesOrigin: "https://s3.example.kz"})
 	srv := httptest.NewServer(h.Routes())
 	t.Cleanup(srv.Close)
 	return env{srv: srv, db: pool}
@@ -290,5 +297,58 @@ func TestSecurityHardening(t *testing.T) {
 		SELECT $1, $2, id, 'foreign-batch', current_date FROM users WHERE org_id = $1`, otherOrg, tpl)
 	if res := e.post(t, c, "/admin/assignments/foreign-batch/remind", nil); res.StatusCode != http.StatusNotFound {
 		t.Errorf("чужая партия: %d", res.StatusCode)
+	}
+}
+
+type fakeFiles struct{ calls []string }
+
+func (f *fakeFiles) Serve(w http.ResponseWriter, _ *http.Request, orgID int64, name string) error {
+	f.calls = append(f.calls, fmt.Sprintf("%d/%s", orgID, name))
+	http.Redirect(w, &http.Request{}, "https://s3.example.kz/signed", http.StatusFound)
+	return nil
+}
+
+func TestFilesGoThroughAccessCheck(t *testing.T) {
+	fake := &fakeFiles{}
+	e := setupWith(t, fake)
+	phone, org := e.newUser(t, nil, domain.RoleWorker)
+	c := e.login(t, phone)
+
+	if res, _ := e.get(t, c, fmt.Sprintf("/files/%d/abc.png", org+100000)); res.StatusCode != http.StatusNotFound || len(fake.calls) != 0 {
+		t.Fatalf("чужая организация: %d, хранилище вызвано %v", res.StatusCode, fake.calls)
+	}
+	res, _ := e.get(t, c, fmt.Sprintf("/files/%d/abc.png", org))
+	if res.StatusCode != http.StatusFound || len(fake.calls) != 1 || fake.calls[0] != fmt.Sprintf("%d/abc.png", org) {
+		t.Fatalf("своя организация: %d %v", res.StatusCode, fake.calls)
+	}
+	if res, _ := e.get(t, client(), fmt.Sprintf("/files/%d/abc.png", org)); res.StatusCode != http.StatusSeeOther || len(fake.calls) != 1 {
+		t.Fatal("без входа хранилище не вызывается")
+	}
+	// Картинки из S3 разрешены CSP страниц.
+	res, _ = e.get(t, c, "/m")
+	if !strings.Contains(res.Header.Get("Content-Security-Policy"), "img-src 'self' data: blob: https://s3.example.kz") {
+		t.Fatalf("CSP: %s", res.Header.Get("Content-Security-Policy"))
+	}
+}
+
+func TestPhoneStoredRawShownFormatted(t *testing.T) {
+	e := setup(t)
+	hsePhone, org := e.newUser(t, nil, domain.RoleHSE)
+	c := e.login(t, hsePhone)
+
+	// Так поле отправляет маска на фронте.
+	n := rand.IntN(10_000_000)
+	masked := fmt.Sprintf("+7 776 %03d %02d %02d", n/10000, n/100%100, n%100)
+	stored := fmt.Sprintf("7776%07d", n)
+	if res := e.post(t, c, "/admin/people/save", url.Values{"name": {"Берик"}, "phone": {masked}, "role": {"worker"}, "active": {"1"}}); res.StatusCode != http.StatusSeeOther {
+		t.Fatalf("сохранение: %d", res.StatusCode)
+	}
+	var got string
+	if err := e.db.QueryRow(ctx, `SELECT phone FROM users WHERE org_id = $1 AND name = 'Берик'`, org).Scan(&got); err != nil || got != stored {
+		t.Fatalf("в базе %q, ожидалось %q (%v)", got, stored, err)
+	}
+	_, body := e.get(t, c, "/admin/people")
+	if body = html.UnescapeString(body); !strings.Contains(body, masked) || strings.Contains(body, "+"+stored) {
+		t.Fatalf("в списке номер должен быть %q", masked)
 	}
 }

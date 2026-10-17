@@ -16,6 +16,9 @@ func TestNormalizePhone(t *testing.T) {
 		"+1 555 0000":        "",
 		"":                   "",
 		"8 (727) 1":          "",
+		"+7 702 402 52 82":   "77024025282", // как отправляет маска
+		"87024025282":        "77024025282",
+		"7024025282":         "77024025282",
 	} {
 		if got := NormalizePhone(in); got != want {
 			t.Errorf("NormalizePhone(%q) = %q, want %q", in, got, want)
@@ -129,5 +132,22 @@ func TestAssignmentOverdue(t *testing.T) {
 func TestClip(t *testing.T) {
 	if Clip("  Қауіп  ", 10) != "Қауіп" || Clip("абвгд", 3) != "абв" || len([]rune(Clip(strings.Repeat("ы", 3000), MaxText))) != MaxText {
 		t.Fatal("Clip режет по символам")
+	}
+}
+
+func TestFormatPhone(t *testing.T) {
+	for in, want := range map[string]string{
+		"77024025282": "+7 702 402 52 82",
+		"":            "",
+		"12345":       "12345",
+		"7702402528x": "7702402528x",
+	} {
+		if got := FormatPhone(in); got != want {
+			t.Errorf("FormatPhone(%q) = %q, want %q", in, got, want)
+		}
+	}
+	// Туда и обратно: формат показа нормализуется в формат хранения.
+	if NormalizePhone(FormatPhone("77024025282")) != "77024025282" {
+		t.Fatal("round trip")
 	}
 }

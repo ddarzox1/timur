@@ -16,8 +16,8 @@
   <div class="card">
     <h3>Тариф</h3>
     <p>Активных сотрудников: <b>{{.Active}}</b></p>
-    <p>Цена: {{.Price}} ₸ за сотрудника в месяц</p>
-    <p style="font-size:1.5rem;font-weight:800">{{.Total}} ₸ / мес</p>
+    <p>Цена: {{money .Price}} ₸ за сотрудника в месяц</p>
+    <p style="font-size:1.5rem;font-weight:800">{{money .Total}} ₸ / мес</p>
     <p class="small muted">Счета и оплата — по запросу: info@qauipsiz.kz</p>
   </div>
 </div>

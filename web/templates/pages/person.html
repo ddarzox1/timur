@@ -8,7 +8,7 @@
   {{if .P.ID}}<input type="hidden" name="id" value="{{.P.ID}}">{{end}}
   <div class="field"><label for="name">ФИО</label><input id="name" name="name" value="{{.P.Name}}" required></div>
   <div class="grid">
-    <div class="field"><label for="phone">Телефон</label><input id="phone" name="phone" type="tel" value="{{if .P.Phone}}+{{.P.Phone}}{{end}}" placeholder="+7 7__ ___ __ __" required></div>
+    <div class="field"><label for="phone">Телефон</label><input id="phone" name="phone" type="tel" value="{{phone .P.Phone}}" placeholder="+7 7__ ___ __ __" required></div>
     <div class="field"><label for="by">Год рождения</label><input id="by" name="birth_year" type="number" min="1940" max="2015" value="{{with .P.BirthYear}}{{.}}{{end}}"></div>
   </div>
   <div class="field"><label for="pos">Должность</label><input id="pos" name="position" value="{{.P.Position}}"></div>

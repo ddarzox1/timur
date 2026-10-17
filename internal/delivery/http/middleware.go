@@ -118,12 +118,24 @@ func limitBody(next http.Handler) http.Handler {
 	})
 }
 
-// csp: inline-скрипты и стили пока нужны (htmx-атрибуты, таймер входа, Sortable в конструкторе чек-листа).
-const csp = "default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; " +
-	"script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; " +
-	"frame-ancestors 'none'; form-action 'self'; base-uri 'self'; object-src 'none'"
+// pageCSP: inline-скрипты и стили пока нужны (htmx-атрибуты, таймер входа, Sortable в конструкторе чек-листа).
+// filesOrigin — хранилище S3: /files/… редиректит туда, картинки и видео грузятся оттуда.
+func pageCSP(filesOrigin string) string {
+	media := "'self' data: blob:"
+	if filesOrigin != "" {
+		media += " " + filesOrigin
+	}
+	return "default-src 'self'; img-src " + media + "; media-src " + media + "; " +
+		"script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; " +
+		"frame-ancestors 'none'; form-action 'self'; base-uri 'self'; object-src 'none'"
+}
 
-func secureHeaders(next http.Handler) http.Handler {
+func secureHeaders(filesOrigin string) func(http.Handler) http.Handler {
+	csp := pageCSP(filesOrigin)
+	return func(next http.Handler) http.Handler { return secureHeadersWith(csp, next) }
+}
+
+func secureHeadersWith(csp string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
 		h.Set("X-Content-Type-Options", "nosniff")

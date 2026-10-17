@@ -16,14 +16,16 @@ import (
 	"qauipsiz/web"
 )
 
-// FileServer отдаёт путь к загруженному файлу организации.
+// FileServer отдаёт загруженный файл (с диска или редиректом в S3). Права проверяет Handler.
 type FileServer interface {
-	Path(orgID int64, name string) string
+	Serve(w http.ResponseWriter, r *http.Request, orgID int64, name string) error
 }
 
 type Options struct {
 	CookieSecure bool
 	PricePerUser int
+	// FilesOrigin — адрес внешнего хранилища (S3) для CSP; пусто, если файлы на диске.
+	FilesOrigin string
 }
 
 type Handler struct {
@@ -126,5 +128,5 @@ func (h *Handler) Routes() http.Handler {
 	m.Handle("POST /admin/org/locations", staff(h.locationSave))
 	m.Handle("GET /admin/settings", admin(h.settings))
 	m.Handle("POST /admin/settings", admin(h.settingsSave))
-	return secureHeaders(limitBody(sameOrigin(m)))
+	return secureHeaders(h.opt.FilesOrigin)(limitBody(sameOrigin(m)))
 }

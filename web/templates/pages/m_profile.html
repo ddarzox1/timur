@@ -8,7 +8,7 @@
 <div class="card">
   <div class="small muted">{{t "Подразделение"}}</div><div>{{or .Me.Department "—"}}</div>
   <div class="small muted" style="margin-top:.5rem">{{t "Объект"}}</div><div>{{or .Me.Location "—"}}</div>
-  <div class="small muted" style="margin-top:.5rem">{{t "Телефон"}}</div><div>+{{.Me.Phone}}</div>
+  <div class="small muted" style="margin-top:.5rem">{{t "Телефон"}}</div><div>{{phone .Me.Phone}}</div>
 </div>
 <div class="card row between"><span>{{t "Язык"}}</span>{{template "langswitch" .}}</div>
 <h2>{{t "Подписанные инструктажи"}}</h2>

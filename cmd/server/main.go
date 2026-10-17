@@ -54,7 +54,11 @@ func run() error {
 		}
 	}
 
-	h := NewHandler(postgres.New(pool), cfg)
+	files, filesOrigin, err := newStorage(ctx, cfg)
+	if err != nil {
+		return err
+	}
+	h := NewHandler(postgres.New(pool), files, filesOrigin, cfg)
 	srv := &http.Server{Addr: cfg.Addr, Handler: h.Routes(),
 		ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 2 * time.Minute, WriteTimeout: 2 * time.Minute, IdleTimeout: 2 * time.Minute}
 	go func() {
@@ -70,9 +74,27 @@ func run() error {
 	return nil
 }
 
+// fileStore — хранилище файлов: сохранение для usecase и отдача для HTTP.
+type fileStore interface {
+	hazard.Storage
+	httpdelivery.FileServer
+}
+
+// newStorage выбирает хранилище по STORAGE; для S3 возвращает его адрес для CSP.
+func newStorage(ctx context.Context, cfg config.Config) (fileStore, string, error) {
+	if cfg.Storage != "s3" {
+		return storage.Local{Dir: cfg.UploadsDir}, "", nil
+	}
+	s3, err := storage.NewS3(ctx, storage.S3Config(cfg.S3))
+	if err != nil {
+		return nil, "", err
+	}
+	slog.Info("файлы хранятся в S3", "bucket", cfg.S3.Bucket, "endpoint", cfg.S3.Endpoint)
+	return s3, s3.Origin(), nil
+}
+
 // NewHandler собирает все слои: репозиторий → usecase → HTTP.
-func NewHandler(store *postgres.Store, cfg config.Config) *httpdelivery.Handler {
-	files := storage.Local{Dir: cfg.UploadsDir}
+func NewHandler(store *postgres.Store, files fileStore, filesOrigin string, cfg config.Config) *httpdelivery.Handler {
 	sender := sms.Log{}
 	hazards := hazard.New(store, store, files)
 	return httpdelivery.New(httpdelivery.Services{
@@ -83,5 +105,5 @@ func NewHandler(store *postgres.Store, cfg config.Config) *httpdelivery.Handler 
 		People:     people.New(store, files),
 		Dashboard:  dashboard.New(store),
 		Pilot:      pilot.New(store),
-	}, files, httpdelivery.Options{CookieSecure: cfg.CookieSecure, PricePerUser: cfg.PricePerUser})
+	}, files, httpdelivery.Options{CookieSecure: cfg.CookieSecure, PricePerUser: cfg.PricePerUser, FilesOrigin: filesOrigin})
 }

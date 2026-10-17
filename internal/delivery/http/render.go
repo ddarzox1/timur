@@ -7,6 +7,7 @@ import (
 	"math"
 	"net/http"
 	"path"
+	"strconv"
 	"strings"
 	"time"
 
@@ -33,8 +34,10 @@ var funcs = template.FuncMap{
 		}
 		return int(math.Round(float64(a) * 100 / float64(b)))
 	},
-	"add": func(a, b int) int { return a + b },
-	"sub": func(a, b int) int { return a - b },
+	"add":   func(a, b int) int { return a + b },
+	"money": money,
+	"phone": domain.FormatPhone,
+	"sub":   func(a, b int) int { return a - b },
 	"deref": func(p *int64) int64 {
 		if p == nil {
 			return 0
@@ -89,6 +92,24 @@ func renderBlock(w http.ResponseWriter, r *http.Request, page, block string, dat
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	return t.ExecuteTemplate(w, block, data)
+}
+
+// money форматирует сумму в тенге с неразрывным пробелом между тысячами: 9990 → «9 990».
+func money(n int) string {
+	s := strconv.Itoa(n)
+	neg := strings.HasPrefix(s, "-")
+	s = strings.TrimPrefix(s, "-")
+	var b strings.Builder
+	for i, c := range s {
+		if i > 0 && (len(s)-i)%3 == 0 {
+			b.WriteRune('\u00a0')
+		}
+		b.WriteRune(c)
+	}
+	if neg {
+		return "-" + b.String()
+	}
+	return b.String()
 }
 
 func fmtDate(v any) string { return fmtTime(v, "02.01.2006") }

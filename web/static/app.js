@@ -16,6 +16,9 @@ function toast(text) {
 }
 
 htmx.onLoad((root) => {
+  // Маска номера на всех полях телефона, включая подгруженные htmx.
+  root.querySelectorAll('input[type=tel]').forEach(QPhone.setupInput);
+
   // Подписи колонок для таблиц-карточек на телефоне
   root.querySelectorAll('table.rtable').forEach((t) => {
     const heads = [...t.querySelectorAll('thead th')].map((th) => th.textContent.trim());

@@ -1,0 +1,9 @@
+{
+  "identities": [
+    {
+      "name": "qauipsiz",
+      "credentials": [{ "accessKey": "qauipsiz", "secretKey": "qauipsiz-secret" }],
+      "actions": ["Admin", "Read", "Write", "List", "Tagging"]
+    }
+  ]
+}

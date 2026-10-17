@@ -19,7 +19,7 @@
   <thead><tr><th>ФИО</th><th>Телефон</th><th>Должность</th><th>Подразделение</th><th>Объект</th><th>Роль</th><th>Инструктажи</th></tr></thead>
   <tbody>{{range .People}}<tr {{if not .Active}}style="opacity:.5"{{end}}>
     <td><a href="/admin/people/{{.ID}}">{{.Name}}</a>{{if not .Active}} <span class="badge">отключён</span>{{end}}</td>
-    <td>+{{.Phone}}</td><td>{{.Position}}</td><td>{{.Department}}</td><td>{{.Location}}</td><td>{{role .Role}}</td>
+    <td>{{phone .Phone}}</td><td>{{.Position}}</td><td>{{.Department}}</td><td>{{.Location}}</td><td>{{role .Role}}</td>
     <td>{{if .Overdue}}<span class="badge danger">просрочен</span>{{else}}<span class="badge ok">всё ок</span>{{end}}</td>
   </tr>{{else}}<tr><td colspan="7" class="muted">Сотрудников нет. Добавьте вручную или импортируйте из Excel.</td></tr>{{end}}</tbody>
 </table></div>

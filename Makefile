@@ -4,7 +4,7 @@
 export
 
 .DEFAULT_GOAL := help
-.PHONY: help env up down logs db run test test-unit cover lint build psql reset
+.PHONY: help env up up-s3 down logs db run test test-unit test-js cover lint build psql reset
 
 UNIT_PKGS := ./internal/domain/... ./internal/usecase/... ./internal/infra/... ./internal/config/...
 
@@ -20,8 +20,14 @@ up: env ## Запустить всё в Docker: приложение + Postgres
 	@echo "  Готово: http://localhost:8080"
 	@code=$$(sed -n 's/^FIXED_OTP=//p' .env); echo "  Вход:   +7 701 000 00 01 (админ) или …02 (сотрудник), код $${code:-из логов: make logs}"
 
+up-s3: env ## Разработка с S3: Postgres + локальный S3 (SeaweedFS) в Docker, приложение на хосте
+	docker compose --profile s3 up -d --wait db s3
+	docker compose --profile s3 run --rm s3-init
+	@docker compose stop app 2>/dev/null || true  # порт 8080 нужен приложению на хосте
+	STORAGE=s3 go run ./cmd/server
+
 down: ## Остановить контейнеры (данные сохраняются)
-	docker compose down
+	docker compose --profile s3 down
 
 logs: ## Логи приложения
 	docker compose logs -f app
@@ -30,6 +36,7 @@ db: ## Поднять только Postgres (для make run и тестов)
 	docker compose up -d --wait db
 
 run: env db ## Запустить приложение на хосте (go run) с переменными из .env
+	@docker compose stop app 2>/dev/null || true  # порт 8080 нужен приложению на хосте
 	go run ./cmd/server
 
 test: db ## Все тесты, включая интеграционные с Postgres
@@ -37,6 +44,9 @@ test: db ## Все тесты, включая интеграционные с Po
 
 test-unit: ## Unit-тесты без базы
 	go test $(UNIT_PKGS)
+
+test-js: ## Тест маски телефона (нужен Node.js)
+	node --test web/phone-mask.test.js
 
 cover: ## Покрытие бизнес-логики
 	go test -cover ./internal/usecase/...
@@ -53,4 +63,4 @@ psql: ## Консоль Postgres
 
 reset: ## Удалить базу и загрузки (с подтверждением)
 	@read -p "Удалить базу и все загруженные файлы? Введите yes: " a && [ "$$a" = yes ] || { echo "Отменено"; exit 1; }
-	docker compose down -v
+	docker compose --profile s3 down -v
