@@ -16,7 +16,7 @@ func (h *Handler) adminDashboard(w http.ResponseWriter, r *http.Request, u domai
 	return render(w, r, "dashboard", map[string]any{"O": st.Org, "Days": st.DaysWithoutInjury,
 		"OpenH": st.OpenHazards, "OverdueH": st.OverdueHazards, "TotalA": st.Assigned, "SignedA": st.Signed, "Runs7": st.RunsWeek,
 		"Expiring": st.Expiring, "Weeks": st.Weeks, "MaxW": st.MaxWeek, "Cats": st.Categories, "MaxC": st.MaxCategory,
-		"Deps": st.Departments, "OverdueHz": st.OverdueHazards, "OverdueAs": st.OverdueAssignments, "Period": st.Period})
+		"Deps": st.Departments, "OverdueHz": st.OverdueHazardList, "OverdueAs": st.OverdueAssignments, "Period": st.Period})
 }
 
 func (h *Handler) mHome(w http.ResponseWriter, r *http.Request, u domain.User) error {

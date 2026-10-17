@@ -50,7 +50,7 @@ type Stats struct {
 	Counts
 	Weeks, Categories, Departments []domain.Bar
 	MaxWeek, MaxCategory           int
-	OverdueHazards                 []domain.Hazard
+	OverdueHazardList              []domain.Hazard
 	OverdueAssignments             []domain.Assignment
 	Expiring                       []domain.Expiring
 	Period                         int
@@ -75,7 +75,7 @@ func (s *Service) Stats(ctx context.Context, u domain.User, periodDays int) (Sta
 	if st.Departments, err = s.repo.SignaturesByDepartment(ctx, u.OrgID, st.Period); err != nil {
 		return st, err
 	}
-	if st.OverdueHazards, err = s.repo.OverdueHazards(ctx, u.OrgID, 10); err != nil {
+	if st.OverdueHazardList, err = s.repo.OverdueHazards(ctx, u.OrgID, 10); err != nil {
 		return st, err
 	}
 	if st.OverdueAssignments, err = s.repo.OverdueAssignments(ctx, u.OrgID, 10); err != nil {
