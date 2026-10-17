@@ -28,14 +28,14 @@
     <tbody>
     {{range .Hazards}}<tr>
       <td><input type="checkbox" name="ids" value="{{.ID}}" aria-label="Выбрать №{{.ID}}"></td>
-      <td><a href="/admin/hazards/{{.ID}}">№{{.ID}}</a><div class="small muted">{{date .CreatedAt}}</div></td>
+      <td><a href="/admin/hazards/{{.ID}}">№{{.ID}}</a><div class="small muted" style="white-space:nowrap">{{date .CreatedAt}}</div></td>
       <td>{{if and .Photo (not (hasSuffix .Photo ".mp4"))}}<img class="thumb" src="{{.Photo}}" alt="">{{else}}<span class="thumb" style="display:flex;align-items:center;justify-content:center">{{catIcon .Category}}</span>{{end}}</td>
       <td><a href="/admin/hazards/{{.ID}}">{{cat .Category}}</a><div class="small muted" style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{.Description}}</div></td>
       <td>{{template "riskBadge" .Risk}}</td>
       <td>{{.Location}}{{with .Place}}<div class="small muted">{{.}}</div>{{end}}</td>
       <td>{{or .Author "Аноним"}}</td>
       <td>{{or .Responsible "—"}}</td>
-      <td>{{date .DueAt}}</td>
+      <td style="white-space:nowrap">{{date .DueAt}}</td>
       <td>{{template "statusBadge" .}}</td>
     </tr>{{else}}<tr><td colspan="10" class="muted">Ничего не найдено. Сотрудники сообщают об опасностях с телефона — кнопка «＋» в мобильной версии.</td></tr>{{end}}
     </tbody>
