@@ -17,7 +17,7 @@
       <label class="na"><input type="radio" name="a{{$i}}" value="na"><span>{{t "Н/П"}}</span></label>
     </div>
     <div class="extra">
-      <div class="field"><label for="p{{$i}}">📷 {{t "Фото"}}</label><input id="p{{$i}}" type="file" name="p{{$i}}" accept="image/*" capture="environment"></div>
+      <div class="field"><label for="p{{$i}}">{{template "i" "camera"}} {{t "Фото"}}</label><input id="p{{$i}}" type="file" name="p{{$i}}" accept="image/*" capture="environment"></div>
       <div class="field"><label for="c{{$i}}">{{t "Комментарий"}}</label><input id="c{{$i}}" name="c{{$i}}"></div>
       {{if $it.HazardOnNo}}<label class="check"><input type="checkbox" name="h{{$i}}" value="1" checked> {{t "Создать опасность"}}</label>{{end}}
     </div>

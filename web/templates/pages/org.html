@@ -29,7 +29,7 @@
     <div class="table-wrap"><table><tbody>
       {{range .Locs}}<tr>
         <td><a href="/admin/org/locations/{{.ID}}">{{.Name}}</a><div class="small muted">{{.Address}}</div></td>
-        <td class="small">{{if .Lat}}📍 {{.RadiusM}} м{{else}}<span class="muted">нет координат</span>{{end}}</td>
+        <td class="small">{{if .Lat}}{{template "i" "pin"}} {{.RadiusM}} м{{else}}<span class="muted">нет координат</span>{{end}}</td>
         <td class="small">{{or .Responsible "—"}}</td>
         <td>{{with .EvacuationPath}}<a href="{{.}}" target="_blank" hx-boost="false" class="small">план эвакуации</a>{{end}}</td>
       </tr>{{else}}<tr><td class="muted">Объектов нет</td></tr>{{end}}

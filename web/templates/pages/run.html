@@ -2,7 +2,7 @@
 {{define "title"}}{{.R.Title}}{{end}}
 {{define "content"}}
 <p><a href="/admin/runs">‹ Результаты</a></p>
-<div class="row between"><h1>{{.R.Title}}</h1><button class="btn" onclick="print()">🖨 PDF / печать</button></div>
+<div class="row between"><h1>{{.R.Title}}</h1><button class="btn" onclick="print()">{{template "i" "printer"}}PDF / печать</button></div>
 <p class="muted">{{.R.Location}} · {{.R.UserName}} · {{datetime .R.CreatedAt}} · несоответствий: <b>{{.R.Issues}}</b> из {{.R.Total}}</p>
 <div class="table-wrap"><table>
   <tbody>{{range .R.Answers}}

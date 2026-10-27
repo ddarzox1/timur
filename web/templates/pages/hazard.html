@@ -3,15 +3,15 @@
 {{define "content"}}
 <p><a href="/admin/hazards">‹ Все опасности</a></p>
 <div class="row between">
-  <h1>{{catIcon .H.Category}} №{{.H.ID}} · {{cat .H.Category}}</h1>
-  <button class="btn" onclick="print()">🖨 Печать</button>
+  <h1>№{{.H.ID}} · {{cat .H.Category}}</h1>
+  <button class="btn" onclick="print()">{{template "i" "printer"}}Печать</button>
 </div>
 <p class="row">{{template "statusBadge" .H}} {{template "riskBadge" .H.Risk}} <span class="muted small">{{datetime .H.CreatedAt}} · {{or .H.Author "Аноним"}}</span></p>
 <div class="grid cols">
   <div>
     <div class="card">
       <p style="margin-top:0;font-size:1.05rem">{{.H.Description}}</p>
-      <p class="muted">📍 {{or .H.Location "—"}}{{with .H.Place}}, {{.}}{{end}}
+      <p class="muted">{{template "i" "pin"}} {{or .H.Location "—"}}{{with .H.Place}}, {{.}}{{end}}
         {{if .H.Lat}} · <a href="https://2gis.kz/geo/{{.H.Lng}},{{.H.Lat}}" target="_blank" hx-boost="false">карта</a>{{end}}</p>
       {{template "photos" .Photos}}
     </div>

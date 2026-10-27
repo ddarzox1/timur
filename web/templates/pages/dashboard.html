@@ -18,7 +18,7 @@
 <div class="grid cols" style="margin-top:1rem">
   <div class="card">
     <div class="row between"><h3>Опасности по неделям</h3>
-      <span class="legend"><span><i style="background:var(--orange)"></i>созданы</span><span><i style="background:var(--ok)"></i>устранены</span></span></div>
+      <span class="legend"><span><i style="background:var(--warn-solid)"></i>созданы</span><span><i style="background:var(--brand)"></i>устранены</span></span></div>
     <div class="bars" role="img" aria-label="Опасности по неделям">
       {{range .Weeks}}<div class="col" title="{{.Label}}: создано {{.A}}, устранено {{.B}}">
         <div class="pair"><div class="b a" style="height:{{pct .A $.MaxW}}%"></div><div class="b f" style="height:{{pct .B $.MaxW}}%"></div></div>
@@ -27,7 +27,7 @@
   </div>
   <div class="card">
     <h3>Опасности по категориям</h3>
-    {{range .Cats}}<div class="hbar"><span>{{catIcon .Label}} {{cat .Label}}</span><div class="track"><div class="fill" style="width:{{pct .A $.MaxC}}%"></div></div><b>{{.A}}</b></div>
+    {{range .Cats}}<div class="hbar"><span>{{cat .Label}}</span><div class="track"><div class="fill" style="width:{{pct .A $.MaxC}}%"></div></div><b>{{.A}}</b></div>
     {{else}}<p class="muted">Нет данных за период</p>{{end}}
   </div>
   <div class="card">
@@ -42,15 +42,15 @@
   <thead><tr><th>Что</th><th>Кто</th><th>Срок</th><th></th></tr></thead>
   <tbody>
   {{range .OverdueHz}}<tr>
-    <td>⚠️ <a href="/admin/hazards/{{.ID}}">№{{.ID}} {{cat .Category}}</a> · <span class="muted">{{.Location}}</span></td>
+    <td><a href="/admin/hazards/{{.ID}}">№{{.ID}} {{cat .Category}}</a> · <span class="muted">{{.Location}}</span></td>
     <td>{{or .Responsible "не назначен"}}</td><td><span class="badge danger">{{date .DueAt}}</span></td>
     <td><a class="btn" href="/admin/hazards/{{.ID}}">Открыть</a></td></tr>{{end}}
   {{range .OverdueAs}}<tr>
-    <td>✍️ {{.Title}} <span class="badge info">{{kind .Kind}}</span></td>
+    <td>{{.Title}} <span class="badge info">{{kind .Kind}}</span></td>
     <td>{{.UserName}}</td><td><span class="badge danger">{{date .DueAt}}</span></td>
     <td><form hx-post="/admin/assignments/{{.Batch}}/remind" hx-swap="outerHTML"><button class="btn">Напомнить</button></form></td></tr>{{end}}
   {{range .Expiring}}<tr>
-    <td>🔁 Повторный: {{.Title}}</td><td>{{.UserName}}</td>
+    <td>Повторный: {{.Title}}</td><td>{{.UserName}}</td>
     <td><span class="badge {{if overdue .NextDue}}danger{{else}}warn{{end}}">{{date .NextDue}}</span></td>
     <td><a class="btn" href="/admin/assign?template={{.Template}}&q={{.UserName}}">Назначить</a></td></tr>{{end}}
   {{if not (or .OverdueHz .OverdueAs .Expiring)}}<tr><td colspan="4" class="muted">Всё в порядке ✓</td></tr>{{end}}

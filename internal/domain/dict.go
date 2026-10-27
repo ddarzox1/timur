@@ -2,16 +2,17 @@ package domain
 
 // Справочники. Ключи хранятся в БД, подписи — для интерфейса (переводятся в delivery).
 
+// Icon — id символа в web/static/icons.svg.
 type Category struct{ Key, Label, Icon string }
 
 var Categories = []Category{
-	{"height", "Работа на высоте", "🪜"},
-	{"electric", "Электричество", "⚡"},
-	{"machinery", "Техника и механизмы", "🚜"},
-	{"fire", "Пожарная опасность", "🔥"},
-	{"ppe", "СИЗ", "🦺"},
-	{"housekeeping", "Порядок на площадке", "🧹"},
-	{"other", "Другое", "⚠️"},
+	{"height", "Работа на высоте", "cat-height"},
+	{"electric", "Электричество", "cat-electric"},
+	{"machinery", "Техника и механизмы", "cat-machine"},
+	{"fire", "Пожарная опасность", "cat-fire"},
+	{"ppe", "СИЗ", "cat-ppe"},
+	{"housekeeping", "Порядок на площадке", "cat-collapse"},
+	{"other", "Другое", "cat-other"},
 }
 
 func CategoryByKey(k string) (Category, bool) {
@@ -20,7 +21,7 @@ func CategoryByKey(k string) (Category, bool) {
 			return c, true
 		}
 	}
-	return Category{Key: k, Label: k, Icon: "⚠️"}, false
+	return Category{Key: k, Label: k, Icon: "cat-other"}, false
 }
 
 var (

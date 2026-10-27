@@ -2,20 +2,22 @@
 {{define "title"}}{{t "Чек-листы"}}{{end}}
 {{define "content"}}
 {{if .Done}}
-<div class="done-screen card">
-  <div class="big">📋</div>
+<div class="done-screen card" style="min-height:0">
+  <span class="ic">{{template "i" "check"}}</span>
   <h1>{{t "Осмотр завершён"}}</h1>
   <p>{{.Done}} {{t "несоответствий"}} · {{.Created}} {{t "создано опасностей"}}</p>
 </div>
 {{end}}
 <h1>{{t "Чек-листы"}}</h1>
+{{if .Templates}}<div class="card">{{end}}
 {{range .Templates}}
 <a class="item" href="/m/checklists/{{.ID}}">
-  <span style="font-size:1.6rem">✅</span>
+  <span class="ic">{{template "i" "checklist"}}</span>
   <span class="grow"><b>{{.Title}}</b><br><span class="muted small">{{with .Location}}{{.}} · {{end}}{{t (freq .Frequency)}}</span></span>
-  {{if .DoneToday}}<span class="badge ok">{{t "Выполнено сегодня"}}</span>{{else}}<span aria-hidden="true">›</span>{{end}}
+  {{if .DoneToday}}<span class="badge ok">{{t "Выполнено сегодня"}}</span>{{else}}<span class="muted">{{template "i" "chevron-right"}}</span>{{end}}
 </a>
 {{else}}
 <p class="muted">{{t "Нет чек-листов"}}</p>
 {{end}}
+{{if .Templates}}</div>{{end}}
 {{end}}

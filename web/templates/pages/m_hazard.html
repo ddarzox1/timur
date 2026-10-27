@@ -3,7 +3,7 @@
 {{define "content"}}
 <a href="/m/hazards">‹ {{t "Назад"}}</a>
 {{if .Created}}<div class="success" style="margin-top:.75rem">✓ {{t "Спасибо! Опасность передана ответственному"}} · №{{.H.ID}}</div>{{end}}
-<h1 style="margin-top:.75rem">{{catIcon .H.Category}} №{{.H.ID}} · {{t (cat .H.Category)}}</h1>
+<h1 style="margin-top:.75rem">№{{.H.ID}} · {{t (cat .H.Category)}}</h1>
 <p class="row">{{template "statusBadge" .H}} {{template "riskBadge" .H.Risk}}</p>
 {{template "photos" .Photos}}
 <div class="card" style="margin-top:1rem">
@@ -18,7 +18,7 @@
 <div class="card">
   {{if eq .H.Status "open"}}<form hx-post="/m/hazards/{{.H.ID}}/start" style="margin-bottom:1rem"><button class="btn primary big">{{t "Взять в работу"}}</button></form>{{end}}
   <form hx-post="/m/hazards/{{.H.ID}}/fix" hx-encoding="multipart/form-data">
-    <div class="field"><label for="after">📷 {{t "Фото после устранения"}}</label><input id="after" type="file" name="photo" accept="image/*" capture="environment" required></div>
+    <div class="field"><label for="after">{{template "i" "camera"}} {{t "Фото после устранения"}}</label><input id="after" type="file" name="photo" accept="image/*" capture="environment" required></div>
     <div class="field"><label for="cm">{{t "Что сделано"}}</label><textarea id="cm" name="comment" required></textarea></div>
     <button class="btn accent big" type="submit">{{t "Отметить устранённой"}}</button>
   </form>

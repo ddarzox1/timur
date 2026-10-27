@@ -15,7 +15,7 @@
 </form>
 <div id="jwrap">
   <div class="row" style="margin-bottom:.75rem">
-    <a class="btn" href="/admin/journals/print?{{.Q.Encode}}" target="_blank" hx-boost="false">🖨 PDF / печать</a>
+    <a class="btn" href="/admin/journals/print?{{.Q.Encode}}" target="_blank" hx-boost="false">{{template "i" "printer"}}PDF / печать</a>
     <a class="btn" href="/admin/journals.csv?{{.Q.Encode}}" hx-boost="false">⬇ Excel (CSV)</a>
     <span class="muted small">Записей: {{len .Rows}}</span>
   </div>

@@ -3,10 +3,10 @@
 {{define "content"}}
 <div class="auth-box">
   <div class="row between" style="margin-bottom:1.5rem">
-    <a href="/" class="logo-t">Qauip<span>siz</span></a>
+    <a href="/" class="logo" style="padding:0"><span class="logo-mark">{{template "i" "shield"}}</span><span class="logo-t">Qauipsiz</span></a>
     {{template "langswitch" .}}
   </div>
-  <div class="card">{{template "form" .}}</div>
+  {{template "form" .}}
 </div>
 {{end}}
 

@@ -38,7 +38,7 @@ htmx.onLoad((root) => {
       c.width = r.width * devicePixelRatio;
       c.height = r.height * devicePixelRatio;
       ctx.scale(devicePixelRatio, devicePixelRatio);
-      ctx.lineWidth = 2.5; ctx.lineCap = 'round'; ctx.strokeStyle = '#0f2a4a';
+      ctx.lineWidth = 2.5; ctx.lineCap = 'round'; ctx.strokeStyle = '#131A2A';
     };
     fit();
     let drawing = false, dirty = false;

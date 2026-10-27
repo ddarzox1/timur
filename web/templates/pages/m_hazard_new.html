@@ -5,14 +5,14 @@
 <h1 style="margin-top:.75rem">{{t "Сообщить об опасности"}}</h1>
 <form hx-post="/m/hazards" hx-encoding="multipart/form-data">
   <div class="field">
-    <label for="photos">📷 {{t "Фото и видео"}}</label>
+    <label for="photos">{{template "i" "camera"}} {{t "Фото и видео"}}</label>
     <input id="photos" type="file" name="photos" accept="image/*,video/mp4" capture="environment" multiple>
     <p class="muted small">До 5 файлов</p>
   </div>
   <fieldset class="field" style="border:0;padding:0;margin:0 0 1rem">
     <legend><label>{{t "Категория"}}</label></legend>
     <div class="tiles">
-      {{range cats}}<label class="tile"><input type="radio" name="category" value="{{.Key}}" required><span><span aria-hidden="true">{{.Icon}}</span>{{t .Label}}</span></label>{{end}}
+      {{range cats}}<label class="tile"><input type="radio" name="category" value="{{.Key}}" required><span>{{template "i" .Icon}}{{t .Label}}</span></label>{{end}}
     </div>
   </fieldset>
   <div class="field">

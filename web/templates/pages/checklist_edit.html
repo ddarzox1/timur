@@ -38,6 +38,6 @@
   <td><select name="item_hazard" aria-label="При «Нет»"><option value="1" {{if .HazardOnNo}}selected{{end}}>Создать опасность</option><option value="0" {{if not .HazardOnNo}}selected{{end}}>Только отметить</option></select></td>
   <td><select name="item_cat" aria-label="Категория">{{$c := .Category}}{{range cats}}<option value="{{.Key}}" {{if eq .Key $c}}selected{{end}}>{{.Label}}</option>{{end}}</select></td>
   {{end}}
-  <td><button type="button" class="btn" onclick="this.closest('tr').remove()" aria-label="Удалить">✕</button></td>
+  <td><button type="button" class="btn" onclick="this.closest('tr').remove()" aria-label="Удалить">{{template "i" "x"}}</button></td>
 </tr>
 {{end}}

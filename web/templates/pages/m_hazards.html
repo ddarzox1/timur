@@ -6,14 +6,17 @@
   <a class="btn grow {{if not .Closed}}primary{{end}}" href="/m/hazards">{{t "Открытые"}}</a>
   <a class="btn grow {{if .Closed}}primary{{end}}" href="/m/hazards?tab=closed">{{t "Устранённые"}}</a>
 </div>
+{{if .Hazards}}<div class="card">{{end}}
 {{range .Hazards}}
 <a class="item {{if .Overdue}}overdue{{end}}" href="/m/hazards/{{.ID}}">
-  {{if and .Photo (not (hasSuffix .Photo ".mp4"))}}<img class="thumb" src="{{.Photo}}" alt="">{{else}}<span class="thumb" style="display:flex;align-items:center;justify-content:center;font-size:1.4rem">{{catIcon .Category}}</span>{{end}}
+  {{if and .Photo (not (hasSuffix .Photo ".mp4"))}}<img class="thumb" src="{{.Photo}}" alt="">{{else}}<span class="ic">{{template "i" (catIcon .Category)}}</span>{{end}}
   <span class="grow"><b>№{{.ID}} · {{t (cat .Category)}}</b><br>
     <span class="small muted">{{date .CreatedAt}}{{with .Location}} · {{.}}{{end}}</span><br>
     {{template "statusBadge" .}}</span>
+  <span class="muted">{{template "i" "chevron-right"}}</span>
 </a>
 {{else}}
 <p class="muted">{{t "Пока ничего нет"}}</p>
 {{end}}
+{{if .Hazards}}</div>{{end}}
 {{end}}

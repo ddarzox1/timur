@@ -8,35 +8,40 @@
 <div class="injury"><span>{{t "Дней без травм"}}</span><b>{{.Days}}</b></div>
 
 <h2>{{t "Нужно подписать"}}</h2>
+{{if .Pending}}<div class="card">{{end}}
 {{range .Pending}}
 <a class="item {{if .Overdue}}overdue{{end}}" href="/m/inductions/{{.ID}}">
-  <span style="font-size:1.6rem">✍️</span>
+  <span class="ic">{{template "i" "sign"}}</span>
   <span class="grow"><b>{{.TitleIn $.Lang}}</b><br><span class="badge info">{{t (kind .Kind)}}</span> {{template "assignBadge" .}}</span>
-  <span aria-hidden="true">›</span>
+  <span class="muted">{{template "i" "chevron-right"}}</span>
 </a>
 {{else}}
-<div class="card success" style="margin:0">{{t "Всё подписано ✓"}}</div>
+<div class="success">{{t "Всё подписано ✓"}}</div>
 {{end}}
+{{if .Pending}}</div>{{end}}
 
 <h2>{{t "Мои чек-листы на сегодня"}}</h2>
+{{if .Checklists}}<div class="card">{{end}}
 {{range .Checklists}}
 <a class="item" href="/m/checklists/{{.ID}}">
-  <span style="font-size:1.6rem">✅</span>
+  <span class="ic">{{template "i" "checklist"}}</span>
   <span class="grow"><b>{{.Title}}</b><br><span class="muted small">{{.Questions}} · {{t (freq .Frequency)}}</span></span>
-  {{if .DoneToday}}<span class="badge ok">{{t "Выполнено сегодня"}}</span>{{else}}<span aria-hidden="true">›</span>{{end}}
+  {{if .DoneToday}}<span class="badge ok">{{t "Выполнено сегодня"}}</span>{{else}}<span class="muted">{{template "i" "chevron-right"}}</span>{{end}}
 </a>
 {{else}}
 <p class="muted">{{t "Нет чек-листов"}}</p>
 {{end}}
+{{if .Checklists}}</div>{{end}}
 
 <h2>{{t "Мои опасности"}}</h2>
-<a class="item" href="/m/hazards">
+<div class="card"><a class="item" href="/m/hazards">
+  <span class="ic">{{template "i" "hazard"}}</span>
   <span class="grow row">
     <span class="badge open">{{t "открыто"}}: {{.Open}}</span>
     <span class="badge fixed">{{t "устранено"}}: {{.Fixed}}</span>
     {{if .Mine}}<span class="badge warn">{{t "Назначено мне"}}: {{.Mine}}</span>{{end}}
   </span>
-  <span aria-hidden="true">›</span>
-</a>
-<div style="margin-top:1rem"><a class="btn accent big" href="/m/hazards/new">＋ {{t "Сообщить об опасности"}}</a></div>
+  <span class="muted">{{template "i" "chevron-right"}}</span>
+</a></div>
+<div style="margin-top:var(--s5)"><a class="btn accent big" href="/m/hazards/new">{{template "i" "hazard"}}{{t "Сообщить об опасности"}}</a></div>
 {{end}}
