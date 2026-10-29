@@ -7,11 +7,13 @@ import (
 	"qauipsiz/internal/domain"
 )
 
-const assignmentSelect = `SELECT a.id, a.template_id, a.user_id, a.batch, a.reason, a.assigned_at, a.due_at, a.signed_at, a.signature,
+const assignmentSelect = `SELECT a.id, a.template_id, a.user_id, a.batch, a.reason, a.location_id, coalesce(al.name, '') AS work_location,
+	a.basis, a.work_type, a.docs, a.assigned_at, a.due_at, a.signed_at, a.signature,
 	a.selfie_path, a.geo_ok, t.title, t.title_kk, t.kind, u.name AS user_name, u.birth_year, u.position,
 	coalesce(d.name, '') AS department, coalesce(i.name, '') AS instructor, coalesce(i.position, '') AS instructor_pos
 	FROM induction_assignments a JOIN induction_templates t ON t.id = a.template_id JOIN users u ON u.id = a.user_id
-	LEFT JOIN departments d ON d.id = u.department_id LEFT JOIN users i ON i.id = a.instructor_id`
+	LEFT JOIN departments d ON d.id = u.department_id LEFT JOIN users i ON i.id = a.instructor_id
+	LEFT JOIN locations al ON al.id = a.location_id`
 
 func (s *Store) InductionTemplates(ctx context.Context, orgID int64) ([]domain.InductionTemplate, error) {
 	return list[domain.InductionTemplate](ctx, s.db, `SELECT t.id, t.title, t.title_kk, t.kind, t.repeat_months, t.instructor_id,
@@ -50,15 +52,29 @@ func (s *Store) SignAssignment(ctx context.Context, userID, id int64, sig domain
 	return tag.RowsAffected() == 1, err
 }
 
-func (s *Store) CreateAssignments(ctx context.Context, viewer domain.User, templateID int64, instructorID *int64, batch, reason string, due time.Time, userIDs []int64) (int, error) {
+func (s *Store) UsersForAssignment(ctx context.Context, viewer domain.User, userIDs []int64) ([]domain.User, error) {
+	deps, err := s.scopeDepts(ctx, viewer)
+	if err != nil {
+		return nil, err
+	}
+	return list[domain.User](ctx, s.db, `SELECT id, org_id, coalesce(phone, '') AS phone, coalesce(iin, '') AS iin,
+		name, position, department_id, location_id, role, active FROM users
+		WHERE org_id = $1 AND id = ANY($2) AND active AND ($3::bigint[] IS NULL OR department_id = ANY($3))
+		ORDER BY id`, viewer.OrgID, userIDs, deps)
+}
+
+func (s *Store) CreateAssignments(ctx context.Context, viewer domain.User, templateID int64, instructorID, locationID *int64,
+	batch, reason, basis, workType, docs string, due time.Time, userIDs []int64) (int, error) {
 	deps, err := s.scopeDepts(ctx, viewer)
 	if err != nil {
 		return 0, err
 	}
 	// Сотрудники фильтруются по организации и области видимости.
-	tag, err := s.db.Exec(ctx, `INSERT INTO induction_assignments (org_id, template_id, user_id, instructor_id, batch, reason, due_at)
-		SELECT $1, $2, id, $3, $4, $5, $6 FROM users
-		WHERE org_id = $1 AND id = ANY($7) AND ($8::bigint[] IS NULL OR department_id = ANY($8))`, viewer.OrgID, templateID, instructorID, batch, reason, due, userIDs, deps)
+	tag, err := s.db.Exec(ctx, `INSERT INTO induction_assignments
+		(org_id, template_id, user_id, instructor_id, location_id, batch, reason, basis, work_type, docs, due_at)
+		SELECT $1, $2, id, $3, $4, $5, $6, $7, $8, $9, $10 FROM users
+		WHERE org_id = $1 AND id = ANY($11) AND ($12::bigint[] IS NULL OR department_id = ANY($12))`,
+		viewer.OrgID, templateID, instructorID, locationID, batch, reason, basis, workType, docs, due, userIDs, deps)
 	return int(tag.RowsAffected()), err
 }
 

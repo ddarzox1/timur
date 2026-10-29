@@ -21,7 +21,9 @@ type Repo interface {
 	// SignAssignment подписывает, только если ещё не подписано; false — уже подписано.
 	SignAssignment(ctx context.Context, userID, id int64, s domain.Signature) (bool, error)
 	// CreateAssignments создаёт назначения только для сотрудников этой организации; возвращает их число.
-	CreateAssignments(ctx context.Context, viewer domain.User, templateID int64, instructorID *int64, batch, reason string, due time.Time, userIDs []int64) (int, error)
+	UsersForAssignment(ctx context.Context, viewer domain.User, userIDs []int64) ([]domain.User, error)
+	CreateAssignments(ctx context.Context, viewer domain.User, templateID int64, instructorID, locationID *int64,
+		batch, reason, basis, workType, docs string, due time.Time, userIDs []int64) (int, error)
 	BatchExists(ctx context.Context, viewer domain.User, batch string) (bool, error)
 	UnsignedInBatch(ctx context.Context, orgID int64, batch string) ([]domain.Notice, error)
 	Batches(ctx context.Context, viewer domain.User) ([]domain.Batch, error)
@@ -161,6 +163,9 @@ func (s *Service) SaveTemplate(ctx context.Context, u domain.User, t domain.Indu
 	if t.RepeatMonths < 0 || t.RepeatMonths > 36 {
 		return domain.Invalid("Неверная периодичность")
 	}
+	if t.Kind == "repeat" && t.RepeatMonths == 0 {
+		t.RepeatMonths = 6
+	}
 	if t.InstructorID != nil {
 		if _, err := s.dir.UserName(ctx, u.OrgID, *t.InstructorID); err != nil {
 			return domain.Invalid("Неизвестный сотрудник")
@@ -185,6 +190,10 @@ type AssignInput struct {
 	Due          *time.Time
 	InstructorID *int64
 	Reason       string
+	LocationID   *int64
+	Basis        string
+	WorkType     string
+	Docs         string
 	NotifySMS    bool
 }
 
@@ -201,8 +210,36 @@ func (s *Service) Assign(ctx context.Context, u domain.User, in AssignInput) (in
 		return 0, err
 	}
 	in.Reason = domain.Clip(in.Reason, domain.MaxTitle)
+	in.Basis = domain.Clip(in.Basis, domain.MaxTitle)
+	in.WorkType = domain.Clip(in.WorkType, domain.MaxTitle)
+	in.Docs = domain.Clip(in.Docs, domain.MaxBody)
 	if t.Kind == "unplanned" && in.Reason == "" {
 		return 0, domain.Invalid("Для внепланового инструктажа укажите причину")
+	}
+	users, err := s.repo.UsersForAssignment(ctx, u, in.UserIDs)
+	if err != nil {
+		return 0, err
+	}
+	if len(users) != len(in.UserIDs) {
+		return 0, domain.Invalid("Часть сотрудников недоступна в вашей области")
+	}
+	if t.Kind == "primary" {
+		if in.LocationID == nil {
+			return 0, domain.Invalid("Для первичного инструктажа укажите рабочее место")
+		}
+		for _, person := range users {
+			if strings.TrimSpace(person.Position) == "" {
+				return 0, domain.Invalid("Для первичного инструктажа у каждого сотрудника должна быть указана профессия или должность")
+			}
+		}
+	}
+	if in.LocationID != nil {
+		if _, err := s.dir.Location(ctx, u.OrgID, *in.LocationID); err != nil {
+			return 0, domain.Invalid("Неизвестное рабочее место")
+		}
+	}
+	if t.Kind == "target" && (in.Basis == "" || in.WorkType == "" || in.Docs == "") {
+		return 0, domain.Invalid("Для целевого инструктажа укажите основание, вид работ и связанные документы")
 	}
 	instructor := t.InstructorID
 	if in.InstructorID != nil {
@@ -212,7 +249,7 @@ func (s *Service) Assign(ctx context.Context, u domain.User, in AssignInput) (in
 		instructor = in.InstructorID
 	}
 	batch := newBatch()
-	n, err := s.repo.CreateAssignments(ctx, u, t.ID, instructor, batch, in.Reason, *in.Due, in.UserIDs)
+	n, err := s.repo.CreateAssignments(ctx, u, t.ID, instructor, in.LocationID, batch, in.Reason, in.Basis, in.WorkType, in.Docs, *in.Due, in.UserIDs)
 	if err != nil || !in.NotifySMS {
 		return n, err
 	}

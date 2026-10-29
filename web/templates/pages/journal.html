@@ -27,17 +27,17 @@
 <table class="journal">
   <thead><tr>
     <th>Дата</th><th>ФИО инструктируемого</th><th>Год рождения</th><th>Профессия, должность</th>
-    {{if .Workplace}}<th>Вид инструктажа</th><th>Причина внепланового</th>{{else}}<th>Подразделение</th>{{end}}
+    {{if .Workplace}}<th>Вид инструктажа</th><th>Причина внепланового</th><th>Рабочее место / целевые данные</th>{{else}}<th>Подразделение</th>{{end}}
     <th>ФИО, должность инструктирующего</th><th>Подпись инструктирующего</th><th>Подпись инструктируемого</th>
   </tr></thead>
   <tbody>
   {{range .Rows}}<tr>
     <td>{{date .SignedAt}}</td><td>{{.UserName}}</td><td>{{with .BirthYear}}{{.}}{{end}}</td><td>{{.Position}}</td>
-    {{if $.Workplace}}<td>{{kind .Kind}}<div class="small muted">{{.Title}}</div></td><td>{{.Reason}}</td>{{else}}<td>{{.Department}}</td>{{end}}
+    {{if $.Workplace}}<td>{{kind .Kind}}<div class="small muted">{{.Title}}</div></td><td>{{.Reason}}</td><td>{{.WorkLocation}}{{with .Basis}}<div class="small">Основание: {{.}}</div>{{end}}{{with .WorkType}}<div class="small">Работы: {{.}}</div>{{end}}{{with .Docs}}<div class="small">Документы: {{.}}</div>{{end}}</td>{{else}}<td>{{.Department}}</td>{{end}}
     <td>{{.Instructor}}{{with .InstructorPos}}, {{.}}{{end}}</td>
     <td class="small muted">эл. назначение</td>
     <td><img class="sig" src="{{safeURL .Signature}}" alt="Подпись {{.UserName}}" title="{{datetime .SignedAt}}{{with .GeoOK}}{{if .}} · на объекте{{else}} · вне объекта{{end}}{{end}}"></td>
-  </tr>{{else}}<tr><td colspan="9" class="muted">Подписанных инструктажей за период нет.</td></tr>{{end}}
+  </tr>{{else}}<tr><td colspan="{{if .Workplace}}10{{else}}8{{end}}" class="muted">Подписанных инструктажей за период нет.</td></tr>{{end}}
   </tbody>
 </table>
 {{end}}

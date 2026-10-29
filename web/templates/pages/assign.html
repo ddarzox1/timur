@@ -29,6 +29,11 @@
     <div class="field"><label for="due">Подписать до</label><input id="due" type="date" name="due_at" value="{{.Due}}" required></div>
     <div class="field"><label for="ins">Инструктирующий</label><select id="ins" name="instructor_id"><option value="">как в шаблоне</option>{{range .Staff}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select></div>
     <div class="field"><label for="reason">Причина (для внепланового)</label><input id="reason" name="reason"></div>
+    <div class="field"><label for="workplace">Рабочее место (обязательно для первичного)</label><select id="workplace" name="location_id"><option value="">— выберите —</option>{{range .Locs}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select></div>
+    <h3>Для целевого инструктажа</h3>
+    <div class="field"><label for="basis">Основание</label><input id="basis" name="basis" placeholder="Наряд-допуск, приказ"></div>
+    <div class="field"><label for="work_type">Вид работ</label><input id="work_type" name="work_type"></div>
+    <div class="field"><label for="docs">Связанные документы</label><textarea id="docs" name="docs" placeholder="Номера и названия документов"></textarea></div>
     <div class="field"><label>Уведомление</label>
       <label class="check"><input type="radio" name="notify" value="sms" checked> SMS со ссылкой</label>
       <label class="check"><input type="radio" name="notify" value="app"> Только в приложении</label></div>

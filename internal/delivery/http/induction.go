@@ -125,7 +125,8 @@ func (h *Handler) assign(w http.ResponseWriter, r *http.Request, u domain.User) 
 	}
 	n, err := h.inductions.Assign(r.Context(), u, induction.AssignInput{
 		TemplateID: formID(r, "template_id"), UserIDs: formIDs(r, "user_ids"), Due: formDate(r, "due_at"),
-		InstructorID: formID(r, "instructor_id"), Reason: r.FormValue("reason"), NotifySMS: r.FormValue("notify") == "sms",
+		InstructorID: formID(r, "instructor_id"), LocationID: formID(r, "location_id"), Reason: r.FormValue("reason"),
+		Basis: r.FormValue("basis"), WorkType: r.FormValue("work_type"), Docs: r.FormValue("docs"), NotifySMS: r.FormValue("notify") == "sms",
 	})
 	if err != nil {
 		return err
@@ -192,7 +193,7 @@ func (h *Handler) journalCSV(w http.ResponseWriter, r *http.Request, u domain.Us
 		return err
 	}
 	cw := startCSV(w, "journal.csv")
-	cw.Write([]string{"Дата", "ФИО", "Год рождения", "Профессия, должность", "Вид инструктажа", "Причина", "Инструктирующий", "Подписано", "Геолокация"})
+	cw.Write([]string{"Дата", "ФИО", "Год рождения", "Профессия, должность", "Вид инструктажа", "Причина", "Рабочее место", "Основание", "Вид работ", "Документы", "Инструктирующий", "Подписано", "Геолокация"})
 	for _, x := range rows {
 		by, geo := "", ""
 		if x.BirthYear != nil {
@@ -202,6 +203,7 @@ func (h *Handler) journalCSV(w http.ResponseWriter, r *http.Request, u domain.Us
 			geo = map[bool]string{true: "на объекте", false: "вне объекта"}[*x.GeoOK]
 		}
 		cw.Write([]string{fmtDate(x.SignedAt), x.UserName, by, x.Position, domain.KindLabels[x.Kind] + ": " + x.Title, x.Reason,
+			x.WorkLocation, x.Basis, x.WorkType, x.Docs,
 			strings.Trim(x.Instructor+", "+x.InstructorPos, ", "), fmtDateTime(x.SignedAt), geo})
 	}
 	cw.Flush()

@@ -25,6 +25,11 @@ type Assignment struct {
 	UserID        int64      `db:"user_id"`
 	Batch         string     `db:"batch"`
 	Reason        string     `db:"reason"`
+	LocationID    *int64     `db:"location_id"`
+	WorkLocation  string     `db:"work_location"`
+	Basis         string     `db:"basis"`
+	WorkType      string     `db:"work_type"`
+	Docs          string     `db:"docs"`
 	AssignedAt    time.Time  `db:"assigned_at"`
 	DueAt         time.Time  `db:"due_at"`
 	SignedAt      *time.Time `db:"signed_at"`

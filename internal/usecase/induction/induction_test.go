@@ -22,6 +22,11 @@ type memRepo struct {
 	reason    string
 	instr     *int64
 	unsigned  []domain.Notice
+	users     map[int64]domain.User
+	location  *int64
+	basis     string
+	workType  string
+	docs      string
 }
 
 func (m *memRepo) InductionTemplate(_ context.Context, org, id int64) (domain.InductionTemplate, error) {
@@ -45,8 +50,19 @@ func (m *memRepo) SignAssignment(_ context.Context, _, id int64, s domain.Signat
 	m.signed[id] = s
 	return true, nil
 }
-func (m *memRepo) CreateAssignments(_ context.Context, _ domain.User, _ int64, instr *int64, _, reason string, _ time.Time, ids []int64) (int, error) {
-	m.created, m.reason, m.instr = ids, reason, instr
+func (m *memRepo) UsersForAssignment(_ context.Context, _ domain.User, ids []int64) ([]domain.User, error) {
+	var out []domain.User
+	for _, id := range ids {
+		if u, ok := m.users[id]; ok {
+			out = append(out, u)
+		}
+	}
+	return out, nil
+}
+func (m *memRepo) CreateAssignments(_ context.Context, _ domain.User, _ int64, instr, location *int64,
+	_, reason, basis, workType, docs string, _ time.Time, ids []int64) (int, error) {
+	m.created, m.reason, m.instr, m.location = ids, reason, instr, location
+	m.basis, m.workType, m.docs = basis, workType, docs
 	return len(ids), nil
 }
 func (m *memRepo) UnsignedInBatch(_ context.Context, org int64, _ string) ([]domain.Notice, error) {
@@ -98,12 +114,18 @@ func setup() (*Service, *memRepo, *sms) {
 			1: {ID: 1, Kind: "repeat", RequireGeo: true, InstructorID: &instr},
 			2: {ID: 2, Kind: "unplanned"},
 			3: {ID: 3, Kind: "intro", RequireSelfie: true},
+			4: {ID: 4, Kind: "primary"},
+			5: {ID: 5, Kind: "target"},
 		},
 		assigns: map[int64]domain.Assignment{
 			100: {ID: 100, TemplateID: 1, UserID: 10},
 			101: {ID: 101, TemplateID: 3, UserID: 10},
 		},
 		signed: map[int64]domain.Signature{},
+		users: map[int64]domain.User{
+			10: {ID: 10, Position: "Монтажник"},
+			11: {ID: 11, Position: "Сварщик"},
+		},
 	}
 	s := &sms{}
 	return New(repo, dir{}, files{}, s, "https://q.kz/"), repo, s
@@ -169,6 +191,17 @@ func TestAssign(t *testing.T) {
 	if _, err := s.Assign(ctx, hse, AssignInput{TemplateID: tpl(2), Due: &due, UserIDs: []int64{10}}); !isInvalid(err, "причину") {
 		t.Fatal("внеплановый без причины — ошибка")
 	}
+	if _, err := s.Assign(ctx, hse, AssignInput{TemplateID: tpl(4), Due: &due, UserIDs: []int64{10}}); !isInvalid(err, "рабочее место") {
+		t.Fatalf("первичный без рабочего места: %v", err)
+	}
+	repo.users[10] = domain.User{ID: 10}
+	if _, err := s.Assign(ctx, hse, AssignInput{TemplateID: tpl(4), Due: &due, UserIDs: []int64{10}, LocationID: &loc}); !isInvalid(err, "профессия") {
+		t.Fatalf("первичный без должности: %v", err)
+	}
+	repo.users[10] = domain.User{ID: 10, Position: "Монтажник"}
+	if _, err := s.Assign(ctx, hse, AssignInput{TemplateID: tpl(5), Due: &due, UserIDs: []int64{10}}); !isInvalid(err, "основание") {
+		t.Fatalf("целевой без полей: %v", err)
+	}
 	bad := int64(500)
 	if _, err := s.Assign(ctx, hse, AssignInput{TemplateID: tpl(1), Due: &due, UserIDs: []int64{10}, InstructorID: &bad}); !isInvalid(err, "Неизвестный") {
 		t.Fatal("инструктирующий из чужой организации")
@@ -196,6 +229,9 @@ func TestSaveTemplate(t *testing.T) {
 	}
 	if err := s.SaveTemplate(ctx, hse, domain.InductionTemplate{Title: " Т ", Kind: "intro"}, &domain.Upload{}); err != nil || repo.templates[99].FilePath == "" || repo.templates[99].Title != "Т" {
 		t.Fatalf("сохранение: %v %+v", err, repo.templates[99])
+	}
+	if err := s.SaveTemplate(ctx, hse, domain.InductionTemplate{Title: "Повтор", Kind: "repeat"}, nil); err != nil || repo.templates[99].RepeatMonths != 6 {
+		t.Fatalf("повторный по умолчанию через 6 месяцев: %v %+v", err, repo.templates[99])
 	}
 }
 

@@ -138,7 +138,7 @@ func TestJournalAndExpiring(t *testing.T) {
 	}
 	due := time.Now().AddDate(0, 0, 3)
 	for _, kind := range []string{"intro", "repeat"} {
-		n, err := s.CreateAssignments(ctx, viewer, ids[kind], &hse, "b-"+kind+fmt.Sprint(f.org), "", due, []int64{worker, 999999})
+		n, err := s.CreateAssignments(ctx, viewer, ids[kind], &hse, nil, "b-"+kind+fmt.Sprint(f.org), "", "", "", "", due, []int64{worker, 999999})
 		must(t, err)
 		if n != 1 {
 			t.Fatalf("назначено %d — чужой id не должен попасть", n)
@@ -178,7 +178,7 @@ func TestJournalAndExpiring(t *testing.T) {
 	if exp, _ := s.ExpiringRepeats(ctx, viewer, 2); len(exp) != 0 {
 		t.Fatal("за 2 дня до срока ещё не предупреждаем")
 	}
-	_, err = s.CreateAssignments(ctx, viewer, ids["repeat"], &hse, "renew"+fmt.Sprint(f.org), "", due, []int64{worker})
+	_, err = s.CreateAssignments(ctx, viewer, ids["repeat"], &hse, nil, "renew"+fmt.Sprint(f.org), "", "", "", "", due, []int64{worker})
 	must(t, err)
 	if exp, _ := s.ExpiringRepeats(ctx, viewer, 14); len(exp) != 0 {
 		t.Fatal("после назначения нового повторного предупреждение пропадает")
@@ -264,7 +264,7 @@ func TestRoleScopes(t *testing.T) {
 	must(t, s.SaveInductionTemplate(ctx, f.org, domain.InductionTemplate{Title: "T", Kind: "intro"}))
 	templates, _ := s.InductionTemplates(ctx, f.org)
 	batch := fmt.Sprintf("scope-%d", f.org)
-	_, err := s.CreateAssignments(ctx, hse, templates[0].ID, &instructorID, batch, "", time.Now().AddDate(0, 0, 1), []int64{rootWorker, childWorker, otherWorker})
+	_, err := s.CreateAssignments(ctx, hse, templates[0].ID, &instructorID, nil, batch, "", "", "", "", time.Now().AddDate(0, 0, 1), []int64{rootWorker, childWorker, otherWorker})
 	must(t, err)
 	_, err = db.Exec(ctx, `UPDATE induction_assignments SET signed_at = now() WHERE batch = $1 AND org_id = $2`, batch, f.org)
 	must(t, err)
@@ -282,6 +282,35 @@ func TestRoleScopes(t *testing.T) {
 		if len(batches) != 1 || batches[0].Total != tc.want {
 			t.Errorf("%s batches = %+v, want total %d", name, batches, tc.want)
 		}
+	}
+}
+
+func TestAssignmentFieldsPersistence(t *testing.T) {
+	s, db := testStore(t)
+	f := newFixture(t, db)
+	worker := f.user(domain.RoleWorker)
+	hseID := f.user(domain.RoleHSE)
+	_, err := db.Exec(ctx, `UPDATE users SET position = 'Электромонтажник' WHERE id = $1`, worker)
+	must(t, err)
+	viewer := domain.User{ID: hseID, OrgID: f.org, Role: domain.RoleHSE}
+	must(t, s.SaveInductionTemplate(ctx, f.org, domain.InductionTemplate{Title: "Огневые работы", Kind: "target"}))
+	templates, _ := s.InductionTemplates(ctx, f.org)
+	batch := fmt.Sprintf("fields-%d", f.org)
+	n, err := s.CreateAssignments(ctx, viewer, templates[0].ID, &hseID, &f.loc, batch, "", "Наряд №7", "Сварка", "ППР-12", time.Now(), []int64{worker})
+	must(t, err)
+	if n != 1 {
+		t.Fatalf("создано назначений: %d", n)
+	}
+	rows, err := s.BatchAssignments(ctx, viewer, batch)
+	must(t, err)
+	if len(rows) != 1 || rows[0].LocationID == nil || *rows[0].LocationID != f.loc || rows[0].WorkLocation != "Объект" ||
+		rows[0].Basis != "Наряд №7" || rows[0].WorkType != "Сварка" || rows[0].Docs != "ППР-12" {
+		t.Fatalf("поля проведения: %+v", rows)
+	}
+	users, err := s.UsersForAssignment(ctx, viewer, []int64{worker})
+	must(t, err)
+	if len(users) != 1 || users[0].Position != "Электромонтажник" {
+		t.Fatalf("данные для валидации: %+v", users)
 	}
 }
 
@@ -317,7 +346,7 @@ func TestUnsignedInBatchIsolation(t *testing.T) {
 	for _, f := range []fixture{a, b} {
 		must(t, s.SaveInductionTemplate(ctx, f.org, domain.InductionTemplate{Title: "T", Kind: "intro"}))
 		ts, _ := s.InductionTemplates(ctx, f.org)
-		_, err := s.CreateAssignments(ctx, domain.User{OrgID: f.org, Role: domain.RoleHSE}, ts[0].ID, nil, batch, "", time.Now(), []int64{f.user(domain.RoleWorker)})
+		_, err := s.CreateAssignments(ctx, domain.User{OrgID: f.org, Role: domain.RoleHSE}, ts[0].ID, nil, nil, batch, "", "", "", "", time.Now(), []int64{f.user(domain.RoleWorker)})
 		must(t, err)
 	}
 	ns, err := s.UnsignedInBatch(ctx, a.org, batch)
