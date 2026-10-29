@@ -3,7 +3,7 @@
 {{define "content"}}
 <div class="row between">
   <h1>Шаблоны инструктажей</h1>
-  <a class="btn accent" href="/admin/inductions/new">＋ Новый шаблон</a>
+  {{if .Me.SeesOrg}}<a class="btn accent" href="/admin/inductions/new">＋ Новый шаблон</a>{{end}}
 </div>
 <div class="table-wrap"><table class="rtable">
   <thead><tr><th>Название</th><th>Вид</th><th>Повтор</th><th>Проводит</th><th>Назначено</th><th></th></tr></thead>
@@ -14,7 +14,7 @@
     <td>{{if .RepeatMonths}}каждые {{.RepeatMonths}} мес.{{else}}—{{end}}</td>
     <td>{{or .Instructor "—"}}</td>
     <td>{{.Assigned}}</td>
-    <td><a class="btn" href="/admin/assign?template={{.ID}}">Назначить</a></td>
+    <td>{{if or ($.Me.SeesOrg) (eq $.Me.Role "instructor")}}<a class="btn" href="/admin/assign?template={{.ID}}">Назначить</a>{{end}}</td>
   </tr>{{else}}<tr><td colspan="6" class="muted">Шаблонов пока нет. Создайте первый — например, вводный инструктаж.</td></tr>{{end}}
   </tbody>
 </table></div>

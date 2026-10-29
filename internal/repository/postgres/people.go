@@ -9,17 +9,26 @@ import (
 	"qauipsiz/internal/domain"
 )
 
-func (s *Store) People(ctx context.Context, orgID int64, f domain.PeopleFilter) ([]domain.User, error) {
+func (s *Store) People(ctx context.Context, viewer domain.User, f domain.PeopleFilter) ([]domain.User, error) {
+	deps, err := s.scopeDepts(ctx, viewer)
+	if err != nil {
+		return nil, err
+	}
 	return list[domain.User](ctx, s.db, `SELECT `+userCols+`,
 		exists(SELECT 1 FROM induction_assignments x WHERE x.user_id = u.id AND x.signed_at IS NULL AND x.due_at < current_date) AS overdue
-		FROM users u `+userJoins+` WHERE u.org_id = $1
-		AND ($2 = '' OR u.name ILIKE '%' || $2 || '%' OR u.phone LIKE '%' || $2 || '%' OR u.position ILIKE '%' || $2 || '%')
+		FROM users u `+userJoins+` WHERE u.org_id = $1 AND ($5::bigint[] IS NULL OR u.department_id = ANY($5))
+		AND ($2 = '' OR u.name ILIKE '%' || $2 || '%' OR coalesce(u.phone, '') LIKE '%' || $2 || '%' OR coalesce(u.iin, '') LIKE '%' || $2 || '%' OR u.position ILIKE '%' || $2 || '%')
 		AND ($3 = '' OR u.department_id::text = $3) AND ($4 = '' OR u.location_id::text = $4)
-		ORDER BY u.active DESC, u.name`, orgID, f.Query, f.Department, f.Location)
+		ORDER BY u.active DESC, u.name`, viewer.OrgID, f.Query, f.Department, f.Location, deps)
 }
 
-func (s *Store) Person(ctx context.Context, orgID, id int64) (domain.User, error) {
-	return one[domain.User](ctx, s.db, `SELECT `+userCols+` FROM users u `+userJoins+` WHERE u.id = $1 AND u.org_id = $2`, id, orgID)
+func (s *Store) Person(ctx context.Context, viewer domain.User, id int64) (domain.User, error) {
+	deps, err := s.scopeDepts(ctx, viewer)
+	if err != nil {
+		return domain.User{}, err
+	}
+	return one[domain.User](ctx, s.db, `SELECT `+userCols+` FROM users u `+userJoins+`
+		WHERE u.id = $1 AND u.org_id = $2 AND ($3::bigint[] IS NULL OR u.department_id = ANY($3))`, id, viewer.OrgID, deps)
 }
 
 // ownRef — id подразделения/объекта, только если он принадлежит организации.
@@ -45,14 +54,21 @@ func (s *Store) savePerson(ctx context.Context, orgID int64, u domain.User, inse
 		if err != nil {
 			return err
 		}
-		args := []any{orgID, u.Phone, u.Name, u.BirthYear, u.Position, dep, loc, u.Role, u.Active}
+		var phone, iin any
+		if u.Phone != "" {
+			phone = u.Phone
+		}
+		if u.IIN != "" {
+			iin = u.IIN
+		}
+		args := []any{orgID, phone, iin, u.Name, u.BirthYear, u.Position, dep, loc, u.Role, u.Active}
 		if insert {
-			_, err = tx.Exec(ctx, `INSERT INTO users (org_id, phone, name, birth_year, position, department_id, location_id, role, active)
-				VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`, args...)
+			_, err = tx.Exec(ctx, `INSERT INTO users (org_id, phone, iin, name, birth_year, position, department_id, location_id, role, active)
+				VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`, args...)
 			return err
 		}
-		tag, err := tx.Exec(ctx, `UPDATE users SET phone=$2, name=$3, birth_year=$4, position=$5, department_id=$6, location_id=$7, role=$8, active=$9
-			WHERE org_id=$1 AND id=$10`, append(args, u.ID)...)
+		tag, err := tx.Exec(ctx, `UPDATE users SET phone=$2, iin=$3, name=$4, birth_year=$5, position=$6, department_id=$7, location_id=$8, role=$9, active=$10
+			WHERE org_id=$1 AND id=$11`, append(args, u.ID)...)
 		if err == nil && tag.RowsAffected() == 0 {
 			return domain.ErrNotFound
 		}
@@ -105,10 +121,14 @@ func (s *Store) ImportPeople(ctx context.Context, orgID int64, rows []domain.Imp
 			if err != nil {
 				return err
 			}
-			tag, err := tx.Exec(ctx, `INSERT INTO users (org_id, phone, name, birth_year, position, department_id, location_id)
-				VALUES ($1,$2,$3,$4,$5,$6,$7)
-				ON CONFLICT (phone) DO UPDATE SET name = $3, birth_year = $4, position = $5, department_id = $6, location_id = $7
-				WHERE users.org_id = $1`, orgID, r.Phone, r.Name, r.BirthYear, r.Position, dep, loc)
+			var iin any
+			if r.IIN != "" {
+				iin = r.IIN
+			}
+			tag, err := tx.Exec(ctx, `INSERT INTO users (org_id, phone, iin, name, birth_year, position, department_id, location_id)
+				VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+				ON CONFLICT (phone) DO UPDATE SET iin = $3, name = $4, birth_year = $5, position = $6, department_id = $7, location_id = $8
+				WHERE users.org_id = $1`, orgID, r.Phone, iin, r.Name, r.BirthYear, r.Position, dep, loc)
 			if err != nil {
 				return err
 			}
@@ -123,15 +143,25 @@ func (s *Store) ImportPeople(ctx context.Context, orgID int64, rows []domain.Imp
 	return imported, conflicts, err
 }
 
-func (s *Store) Staff(ctx context.Context, orgID int64) ([]domain.User, error) {
-	return list[domain.User](ctx, s.db, `SELECT id, name, position, role FROM users WHERE org_id = $1 AND active ORDER BY name`, orgID)
+func (s *Store) Staff(ctx context.Context, viewer domain.User) ([]domain.User, error) {
+	deps, err := s.scopeDepts(ctx, viewer)
+	if err != nil {
+		return nil, err
+	}
+	return list[domain.User](ctx, s.db, `SELECT id, name, position, role FROM users
+		WHERE org_id = $1 AND active AND ($2::bigint[] IS NULL OR department_id = ANY($2)) ORDER BY name`, viewer.OrgID, deps)
 }
 
-func (s *Store) Departments(ctx context.Context, orgID int64) ([]domain.Department, error) {
+func (s *Store) Departments(ctx context.Context, viewer domain.User) ([]domain.Department, error) {
+	deps, err := s.scopeDepts(ctx, viewer)
+	if err != nil {
+		return nil, err
+	}
 	return list[domain.Department](ctx, s.db, `SELECT d.id, d.parent_id, d.name, coalesce(p.name, '') AS parent,
 		(SELECT count(*) FROM users x WHERE x.department_id = d.id AND x.active) AS people
 		FROM departments d LEFT JOIN departments p ON p.id = d.parent_id
-		WHERE d.org_id = $1 ORDER BY coalesce(p.name, d.name), d.parent_id NULLS FIRST, d.name`, orgID)
+		WHERE d.org_id = $1 AND ($2::bigint[] IS NULL OR d.id = ANY($2))
+		ORDER BY coalesce(p.name, d.name), d.parent_id NULLS FIRST, d.name`, viewer.OrgID, deps)
 }
 
 func (s *Store) SaveDepartment(ctx context.Context, orgID int64, d domain.Department) error {

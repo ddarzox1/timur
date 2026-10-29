@@ -50,16 +50,27 @@ func (s *Store) SignAssignment(ctx context.Context, userID, id int64, sig domain
 	return tag.RowsAffected() == 1, err
 }
 
-func (s *Store) CreateAssignments(ctx context.Context, orgID, templateID int64, instructorID *int64, batch, reason string, due time.Time, userIDs []int64) (int, error) {
-	// Сотрудники фильтруются по org_id: чужих назначить нельзя.
+func (s *Store) CreateAssignments(ctx context.Context, viewer domain.User, templateID int64, instructorID *int64, batch, reason string, due time.Time, userIDs []int64) (int, error) {
+	deps, err := s.scopeDepts(ctx, viewer)
+	if err != nil {
+		return 0, err
+	}
+	// Сотрудники фильтруются по организации и области видимости.
 	tag, err := s.db.Exec(ctx, `INSERT INTO induction_assignments (org_id, template_id, user_id, instructor_id, batch, reason, due_at)
-		SELECT $1, $2, id, $3, $4, $5, $6 FROM users WHERE org_id = $1 AND id = ANY($7)`, orgID, templateID, instructorID, batch, reason, due, userIDs)
+		SELECT $1, $2, id, $3, $4, $5, $6 FROM users
+		WHERE org_id = $1 AND id = ANY($7) AND ($8::bigint[] IS NULL OR department_id = ANY($8))`, viewer.OrgID, templateID, instructorID, batch, reason, due, userIDs, deps)
 	return int(tag.RowsAffected()), err
 }
 
-func (s *Store) BatchExists(ctx context.Context, orgID int64, batch string) (bool, error) {
+func (s *Store) BatchExists(ctx context.Context, viewer domain.User, batch string) (bool, error) {
+	deps, err := s.scopeDepts(ctx, viewer)
+	if err != nil {
+		return false, err
+	}
 	var ok bool
-	err := s.db.QueryRow(ctx, `SELECT exists(SELECT 1 FROM induction_assignments WHERE batch = $1 AND org_id = $2)`, batch, orgID).Scan(&ok)
+	err = s.db.QueryRow(ctx, `SELECT exists(SELECT 1 FROM induction_assignments a JOIN users u ON u.id = a.user_id
+		WHERE a.batch = $1 AND a.org_id = $2 AND ($3::bigint[] IS NULL OR u.department_id = ANY($3) OR ($4 = 'instructor' AND a.instructor_id = $5)))`,
+		batch, viewer.OrgID, deps, viewer.Role, viewer.ID).Scan(&ok)
 	return ok, err
 }
 
@@ -68,22 +79,38 @@ func (s *Store) UnsignedInBatch(ctx context.Context, orgID int64, batch string) 
 		JOIN induction_templates t ON t.id = a.template_id WHERE a.org_id = $1 AND a.batch = $2 AND a.signed_at IS NULL AND u.active`, orgID, batch)
 }
 
-func (s *Store) Batches(ctx context.Context, orgID int64) ([]domain.Batch, error) {
+func (s *Store) Batches(ctx context.Context, viewer domain.User) ([]domain.Batch, error) {
+	deps, err := s.scopeDepts(ctx, viewer)
+	if err != nil {
+		return nil, err
+	}
 	return list[domain.Batch](ctx, s.db, `SELECT a.batch, t.title, t.kind, min(a.assigned_at) AS assigned_at, max(a.due_at) AS due_at,
 		count(*) AS total, count(a.signed_at) AS signed
-		FROM induction_assignments a JOIN induction_templates t ON t.id = a.template_id
-		WHERE a.org_id = $1 GROUP BY a.batch, t.title, t.kind ORDER BY min(a.assigned_at) DESC LIMIT 200`, orgID)
+		FROM induction_assignments a JOIN induction_templates t ON t.id = a.template_id JOIN users u ON u.id = a.user_id
+		WHERE a.org_id = $1 AND ($2::bigint[] IS NULL OR u.department_id = ANY($2) OR ($3 = 'instructor' AND a.instructor_id = $4))
+		GROUP BY a.batch, t.title, t.kind ORDER BY min(a.assigned_at) DESC LIMIT 200`, viewer.OrgID, deps, viewer.Role, viewer.ID)
 }
 
-func (s *Store) BatchAssignments(ctx context.Context, orgID int64, batch string) ([]domain.Assignment, error) {
-	return list[domain.Assignment](ctx, s.db, assignmentSelect+` WHERE a.org_id = $1 AND a.batch = $2 ORDER BY u.name`, orgID, batch)
+func (s *Store) BatchAssignments(ctx context.Context, viewer domain.User, batch string) ([]domain.Assignment, error) {
+	deps, err := s.scopeDepts(ctx, viewer)
+	if err != nil {
+		return nil, err
+	}
+	return list[domain.Assignment](ctx, s.db, assignmentSelect+` WHERE a.org_id = $1 AND a.batch = $2
+		AND ($3::bigint[] IS NULL OR u.department_id = ANY($3) OR ($4 = 'instructor' AND a.instructor_id = $5)) ORDER BY u.name`,
+		viewer.OrgID, batch, deps, viewer.Role, viewer.ID)
 }
 
-func (s *Store) Journal(ctx context.Context, orgID int64, kinds []string, f domain.JournalFilter) ([]domain.Assignment, error) {
+func (s *Store) Journal(ctx context.Context, viewer domain.User, kinds []string, f domain.JournalFilter) ([]domain.Assignment, error) {
+	deps, err := s.scopeDepts(ctx, viewer)
+	if err != nil {
+		return nil, err
+	}
 	return list[domain.Assignment](ctx, s.db, assignmentSelect+` WHERE a.org_id = $1 AND a.signed_at IS NOT NULL AND t.kind = ANY($2)
 		AND a.signed_at >= coalesce(nullif($3, '')::date, '-infinity') AND a.signed_at < coalesce(nullif($4, '')::date + 1, 'infinity')
 		AND ($5 = '' OR u.department_id::text = $5) AND ($6 = '' OR u.name ILIKE '%' || $6 || '%')
-		ORDER BY a.signed_at`, orgID, kinds, f.From, f.To, f.Department, f.Name)
+		AND ($7::bigint[] IS NULL OR u.department_id = ANY($7) OR ($8 = 'instructor' AND a.instructor_id = $9))
+		ORDER BY a.signed_at`, viewer.OrgID, kinds, f.From, f.To, f.Department, f.Name, deps, viewer.Role, viewer.ID)
 }
 
 func (s *Store) UserAssignments(ctx context.Context, userID int64, signed bool) ([]domain.Assignment, error) {

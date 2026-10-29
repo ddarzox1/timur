@@ -127,6 +127,7 @@ func TestJournalAndExpiring(t *testing.T) {
 	s, db := testStore(t)
 	f := newFixture(t, db)
 	worker, hse := f.user(domain.RoleWorker), f.user(domain.RoleHSE)
+	viewer := domain.User{ID: hse, OrgID: f.org, Role: domain.RoleHSE}
 	must(t, s.SaveInductionTemplate(ctx, f.org, domain.InductionTemplate{Title: "Вводный", Kind: "intro"}))
 	must(t, s.SaveInductionTemplate(ctx, f.org, domain.InductionTemplate{Title: "Высота", Kind: "repeat", RepeatMonths: 6}))
 	ts, err := s.InductionTemplates(ctx, f.org)
@@ -137,7 +138,7 @@ func TestJournalAndExpiring(t *testing.T) {
 	}
 	due := time.Now().AddDate(0, 0, 3)
 	for _, kind := range []string{"intro", "repeat"} {
-		n, err := s.CreateAssignments(ctx, f.org, ids[kind], &hse, "b-"+kind+fmt.Sprint(f.org), "", due, []int64{worker, 999999})
+		n, err := s.CreateAssignments(ctx, viewer, ids[kind], &hse, "b-"+kind+fmt.Sprint(f.org), "", due, []int64{worker, 999999})
 		must(t, err)
 		if n != 1 {
 			t.Fatalf("назначено %d — чужой id не должен попасть", n)
@@ -159,9 +160,9 @@ func TestJournalAndExpiring(t *testing.T) {
 		}
 	}
 
-	intro, _ := s.Journal(ctx, f.org, []string{"intro"}, domain.JournalFilter{})
-	work, _ := s.Journal(ctx, f.org, domain.WorkplaceKinds, domain.JournalFilter{})
-	future, _ := s.Journal(ctx, f.org, domain.WorkplaceKinds, domain.JournalFilter{From: "2999-01-01"})
+	intro, _ := s.Journal(ctx, viewer, []string{"intro"}, domain.JournalFilter{})
+	work, _ := s.Journal(ctx, viewer, domain.WorkplaceKinds, domain.JournalFilter{})
+	future, _ := s.Journal(ctx, viewer, domain.WorkplaceKinds, domain.JournalFilter{From: "2999-01-01"})
 	if len(intro) != 1 || intro[0].Kind != "intro" || len(work) != 1 || work[0].Kind != "repeat" || len(future) != 0 {
 		t.Fatalf("журналы: вводный %d, рабочее место %d, будущее %d", len(intro), len(work), len(future))
 	}
@@ -169,17 +170,17 @@ func TestJournalAndExpiring(t *testing.T) {
 	// Повторный подписан 6 месяцев назад → истекает; после нового назначения — уже нет.
 	_, err = db.Exec(ctx, `UPDATE induction_assignments SET signed_at = now() - interval '6 months' + interval '5 days' WHERE template_id = $1`, ids["repeat"])
 	must(t, err)
-	exp, err := s.ExpiringRepeats(ctx, f.org, 14)
+	exp, err := s.ExpiringRepeats(ctx, viewer, 14)
 	must(t, err)
 	if len(exp) != 1 || exp[0].UserID != worker {
 		t.Fatalf("истекающие: %+v", exp)
 	}
-	if exp, _ := s.ExpiringRepeats(ctx, f.org, 2); len(exp) != 0 {
+	if exp, _ := s.ExpiringRepeats(ctx, viewer, 2); len(exp) != 0 {
 		t.Fatal("за 2 дня до срока ещё не предупреждаем")
 	}
-	_, err = s.CreateAssignments(ctx, f.org, ids["repeat"], &hse, "renew"+fmt.Sprint(f.org), "", due, []int64{worker})
+	_, err = s.CreateAssignments(ctx, viewer, ids["repeat"], &hse, "renew"+fmt.Sprint(f.org), "", due, []int64{worker})
 	must(t, err)
-	if exp, _ := s.ExpiringRepeats(ctx, f.org, 14); len(exp) != 0 {
+	if exp, _ := s.ExpiringRepeats(ctx, viewer, 14); len(exp) != 0 {
 		t.Fatal("после назначения нового повторного предупреждение пропадает")
 	}
 }
@@ -192,7 +193,13 @@ func TestPeopleConflictAndImport(t *testing.T) {
 	if err := s.CreatePerson(ctx, a.org, domain.User{Name: "Дубль", Phone: phone, Role: domain.RoleWorker}); !errors.Is(err, domain.ErrConflict) {
 		t.Fatalf("дубль телефона: %v", err)
 	}
-	ppl, _ := s.People(ctx, a.org, domain.PeopleFilter{Query: "Ерлан"})
+	iin := "870514300470"
+	must(t, s.CreatePerson(ctx, a.org, domain.User{Name: "Посетитель", IIN: iin, Role: domain.RoleVisitor}))
+	if err := s.CreatePerson(ctx, a.org, domain.User{Name: "Дубль ИИН", IIN: iin, Role: domain.RoleVisitor}); !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("дубль ИИН в организации: %v", err)
+	}
+	must(t, s.CreatePerson(ctx, b.org, domain.User{Name: "Тот же ИИН", IIN: iin, Role: domain.RoleVisitor}))
+	ppl, _ := s.People(ctx, domain.User{OrgID: a.org, Role: domain.RoleHSE}, domain.PeopleFilter{Query: "Ерлан"})
 	if len(ppl) != 1 || ppl[0].LocationID != nil {
 		t.Fatalf("объект чужой организации не должен привязываться: %+v", ppl)
 	}
@@ -206,12 +213,75 @@ func TestPeopleConflictAndImport(t *testing.T) {
 	if n != 2 || len(conflicts) != 1 || conflicts[0] != 4 {
 		t.Fatalf("импорт: %d, конфликты %v", n, conflicts)
 	}
-	deps, _ := s.Departments(ctx, b.org)
+	deps, _ := s.Departments(ctx, domain.User{OrgID: b.org, Role: domain.RoleHSE})
 	if len(deps) != 1 || deps[0].People != 2 {
 		t.Fatalf("подразделение создаётся один раз без учёта регистра: %+v", deps)
 	}
-	if got, _ := s.People(ctx, a.org, domain.PeopleFilter{Query: "Ерлан"}); len(got) != 1 || got[0].Name != "Ерлан" {
+	if got, _ := s.People(ctx, domain.User{OrgID: a.org, Role: domain.RoleHSE}, domain.PeopleFilter{Query: "Ерлан"}); len(got) != 1 || got[0].Name != "Ерлан" {
 		t.Fatal("импорт другой организации не должен перезаписать сотрудника")
+	}
+}
+
+func TestRoleScopes(t *testing.T) {
+	s, db := testStore(t)
+	f := newFixture(t, db)
+	var root, child, other int64
+	must(t, db.QueryRow(ctx, `INSERT INTO departments (org_id, name) VALUES ($1, 'Цех') RETURNING id`, f.org).Scan(&root))
+	must(t, db.QueryRow(ctx, `INSERT INTO departments (org_id, parent_id, name) VALUES ($1, $2, 'Участок') RETURNING id`, f.org, root).Scan(&child))
+	must(t, db.QueryRow(ctx, `INSERT INTO departments (org_id, name) VALUES ($1, 'Другой цех') RETURNING id`, f.org).Scan(&other))
+	add := func(role string, dep *int64) int64 {
+		var id int64
+		must(t, db.QueryRow(ctx, `INSERT INTO users (org_id, phone, name, role, department_id) VALUES ($1,$2,$3,$4,$5) RETURNING id`,
+			f.org, randomPhone(), role+fmt.Sprint(rand.IntN(1000)), role, dep).Scan(&id))
+		return id
+	}
+	sectionID := add(domain.RoleSectionHead, &root)
+	shopID := add(domain.RoleShopHead, &root)
+	instructorID := add(domain.RoleInstructor, &child)
+	rootWorker := add(domain.RoleWorker, &root)
+	childWorker := add(domain.RoleWorker, &child)
+	otherWorker := add(domain.RoleWorker, &other)
+	hseID := add(domain.RoleHSE, nil)
+
+	section := domain.User{ID: sectionID, OrgID: f.org, Role: domain.RoleSectionHead, DepartmentID: &root}
+	shop := domain.User{ID: shopID, OrgID: f.org, Role: domain.RoleShopHead, DepartmentID: &root}
+	instructor := domain.User{ID: instructorID, OrgID: f.org, Role: domain.RoleInstructor, DepartmentID: &child}
+	hse := domain.User{ID: hseID, OrgID: f.org, Role: domain.RoleHSE}
+	for name, tc := range map[string]struct {
+		viewer domain.User
+		want   int
+	}{"section": {section, 3}, "shop": {shop, 5}, "instructor": {instructor, 2}, "hse": {hse, 7}} {
+		got, err := s.People(ctx, tc.viewer, domain.PeopleFilter{})
+		must(t, err)
+		if len(got) != tc.want {
+			t.Errorf("%s sees %d people, want %d", name, len(got), tc.want)
+		}
+	}
+	if _, err := s.Person(ctx, section, otherWorker); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatal("начальник участка не должен видеть чужое подразделение")
+	}
+
+	must(t, s.SaveInductionTemplate(ctx, f.org, domain.InductionTemplate{Title: "T", Kind: "intro"}))
+	templates, _ := s.InductionTemplates(ctx, f.org)
+	batch := fmt.Sprintf("scope-%d", f.org)
+	_, err := s.CreateAssignments(ctx, hse, templates[0].ID, &instructorID, batch, "", time.Now().AddDate(0, 0, 1), []int64{rootWorker, childWorker, otherWorker})
+	must(t, err)
+	_, err = db.Exec(ctx, `UPDATE induction_assignments SET signed_at = now() WHERE batch = $1 AND org_id = $2`, batch, f.org)
+	must(t, err)
+	for name, tc := range map[string]struct {
+		viewer domain.User
+		want   int
+	}{"section": {section, 1}, "shop": {shop, 2}, "instructor": {instructor, 3}, "hse": {hse, 3}} {
+		rows, err := s.Journal(ctx, tc.viewer, []string{"intro"}, domain.JournalFilter{})
+		must(t, err)
+		if len(rows) != tc.want {
+			t.Errorf("%s journal rows = %d, want %d", name, len(rows), tc.want)
+		}
+		batches, err := s.Batches(ctx, tc.viewer)
+		must(t, err)
+		if len(batches) != 1 || batches[0].Total != tc.want {
+			t.Errorf("%s batches = %+v, want total %d", name, batches, tc.want)
+		}
 	}
 }
 
@@ -247,7 +317,7 @@ func TestUnsignedInBatchIsolation(t *testing.T) {
 	for _, f := range []fixture{a, b} {
 		must(t, s.SaveInductionTemplate(ctx, f.org, domain.InductionTemplate{Title: "T", Kind: "intro"}))
 		ts, _ := s.InductionTemplates(ctx, f.org)
-		_, err := s.CreateAssignments(ctx, f.org, ts[0].ID, nil, batch, "", time.Now(), []int64{f.user(domain.RoleWorker)})
+		_, err := s.CreateAssignments(ctx, domain.User{OrgID: f.org, Role: domain.RoleHSE}, ts[0].ID, nil, batch, "", time.Now(), []int64{f.user(domain.RoleWorker)})
 		must(t, err)
 	}
 	ns, err := s.UnsignedInBatch(ctx, a.org, batch)

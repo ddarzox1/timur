@@ -81,7 +81,15 @@ func renderBlock(w http.ResponseWriter, r *http.Request, page, block string, dat
 		return err
 	}
 	lang := langOf(r)
-	t.Funcs(template.FuncMap{"t": func(s string) string { return tr(lang, s) }})
+	t.Funcs(template.FuncMap{
+		"t": func(s string) string { return tr(lang, s) },
+		"role": func(s string) string {
+			if lang == "kk" {
+				return domain.RoleLabelsKK[s]
+			}
+			return domain.RoleLabels[s]
+		},
+	})
 	if data == nil {
 		data = map[string]any{}
 	}

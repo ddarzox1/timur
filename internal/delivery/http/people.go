@@ -62,7 +62,7 @@ func (h *Handler) personEdit(w http.ResponseWriter, r *http.Request, u domain.Us
 }
 
 func (h *Handler) personSave(w http.ResponseWriter, r *http.Request, u domain.User) error {
-	p := domain.User{Name: r.FormValue("name"), Phone: r.FormValue("phone"), Position: r.FormValue("position"),
+	p := domain.User{Name: r.FormValue("name"), Phone: r.FormValue("phone"), IIN: r.FormValue("iin"), Position: r.FormValue("position"),
 		DepartmentID: formID(r, "department_id"), LocationID: formID(r, "location_id"), Role: r.FormValue("role"),
 		Active: r.FormValue("active") == "1"}
 	if id := formID(r, "id"); id != nil {
@@ -80,7 +80,7 @@ func (h *Handler) personSave(w http.ResponseWriter, r *http.Request, u domain.Us
 func (h *Handler) peopleTemplate(w http.ResponseWriter, r *http.Request, _ domain.User) error {
 	cw := startCSV(w, "employees.csv")
 	cw.Write(people.ImportHeader)
-	cw.Write([]string{"Ерлан Сапаров", "+7 701 000 00 02", "1988", "Монтажник", "Строительный участок №1", "Объект ЖК Алатау, Алматы"})
+	cw.Write([]string{"Ерлан Сапаров", "+7 701 000 00 02", "870514300470", "1988", "Монтажник", "Строительный участок №1", "Объект ЖК Алатау, Алматы"})
 	cw.Flush()
 	return cw.Error()
 }

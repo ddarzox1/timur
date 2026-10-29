@@ -73,6 +73,6 @@ func isUniqueViolation(err error) bool {
 	return errors.As(err, &pg) && pg.Code == "23505"
 }
 
-const userCols = `u.id, u.org_id, u.phone, u.name, u.birth_year, u.position, u.department_id, u.location_id, u.role, u.active,
+const userCols = `u.id, u.org_id, coalesce(u.phone, '') AS phone, coalesce(u.iin, '') AS iin, u.name, u.birth_year, u.position, u.department_id, u.location_id, u.role, u.active,
 	coalesce(d.name, '') AS department, coalesce(l.name, '') AS location`
 const userJoins = `LEFT JOIN departments d ON d.id = u.department_id LEFT JOIN locations l ON l.id = u.location_id`

@@ -19,9 +19,9 @@ type memRepo struct {
 	savedOrg *domain.Org
 }
 
-func (m *memRepo) Person(_ context.Context, org, id int64) (domain.User, error) {
+func (m *memRepo) Person(_ context.Context, viewer domain.User, id int64) (domain.User, error) {
 	p, ok := m.people[id]
-	if !ok || p.OrgID != org {
+	if !ok || p.OrgID != viewer.OrgID {
 		return p, domain.ErrNotFound
 	}
 	return p, nil
@@ -103,11 +103,11 @@ func TestSaveRules(t *testing.T) {
 }
 
 func TestParseCSV(t *testing.T) {
-	in := "\xef\xbb\xbfФИО;Телефон;Год рождения;Должность;Подразделение;Объект\n" +
-		"Берик Оспанов;8 702 111 22 33;1991;Сварщик;Сварочный участок;ЖК Алатау\n" +
-		";;;;;\n" +
-		"Без телефона;;;;;\n" +
-		"Асель;+7 701 000 00 04;abc\n"
+	in := "\xef\xbb\xbfФИО;Телефон;ИИН;Год рождения;Должность;Подразделение;Объект\n" +
+		"Берик Оспанов;8 702 111 22 33;;1991;Сварщик;Сварочный участок;ЖК Алатау\n" +
+		";;;;;;\n" +
+		"Без телефона;;;;;;\n" +
+		"Асель;+7 701 000 00 04;;abc\n"
 	rows, errs, err := ParseCSV(strings.NewReader(in))
 	if err != nil {
 		t.Fatal(err)
@@ -124,7 +124,7 @@ func TestParseCSV(t *testing.T) {
 	}
 
 	// Запятая как разделитель, без заголовка
-	rows, _, _ = ParseCSV(strings.NewReader("Ерлан,87010000002,1988,Монтажник,,\n"))
+	rows, _, _ = ParseCSV(strings.NewReader("Ерлан,87010000002,,1988,Монтажник,,\n"))
 	if len(rows) != 1 || rows[0].Name != "Ерлан" {
 		t.Fatalf("запятая: %+v", rows)
 	}

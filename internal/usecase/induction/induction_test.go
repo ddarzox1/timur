@@ -45,7 +45,7 @@ func (m *memRepo) SignAssignment(_ context.Context, _, id int64, s domain.Signat
 	m.signed[id] = s
 	return true, nil
 }
-func (m *memRepo) CreateAssignments(_ context.Context, _, _ int64, instr *int64, _, reason string, _ time.Time, ids []int64) (int, error) {
+func (m *memRepo) CreateAssignments(_ context.Context, _ domain.User, _ int64, instr *int64, _, reason string, _ time.Time, ids []int64) (int, error) {
 	m.created, m.reason, m.instr = ids, reason, instr
 	return len(ids), nil
 }
@@ -55,8 +55,8 @@ func (m *memRepo) UnsignedInBatch(_ context.Context, org int64, _ string) ([]dom
 	}
 	return m.unsigned, nil
 }
-func (m *memRepo) BatchExists(_ context.Context, org int64, _ string) (bool, error) {
-	return org == 1, nil
+func (m *memRepo) BatchExists(_ context.Context, viewer domain.User, _ string) (bool, error) {
+	return viewer.OrgID == 1, nil
 }
 func (m *memRepo) SaveInductionTemplate(_ context.Context, _ int64, t domain.InductionTemplate) error {
 	m.templates[99] = t
@@ -181,7 +181,7 @@ func TestAssign(t *testing.T) {
 	if len(sms.sent) != 1 || !strings.Contains(sms.sent[0], "https://q.kz/m/inductions/555") {
 		t.Fatalf("SMS: %v", sms.sent)
 	}
-	if err := s.Remind(ctx, domain.User{OrgID: 2}, "b"); !errors.Is(err, domain.ErrNotFound) {
+	if err := s.Remind(ctx, domain.User{OrgID: 2, Role: domain.RoleHSE}, "b"); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatal("чужая партия назначений")
 	}
 }
@@ -208,7 +208,7 @@ func (m *memRepo) UserAssignments(_ context.Context, user int64, signed bool) ([
 	}
 	return out, nil
 }
-func (m *memRepo) Journal(_ context.Context, _ int64, kinds []string, _ domain.JournalFilter) ([]domain.Assignment, error) {
+func (m *memRepo) Journal(_ context.Context, _ domain.User, kinds []string, _ domain.JournalFilter) ([]domain.Assignment, error) {
 	m.reason = strings.Join(kinds, ",")
 	return nil, nil
 }

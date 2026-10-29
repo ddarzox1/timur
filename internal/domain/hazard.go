@@ -31,7 +31,7 @@ func (h Hazard) Overdue() bool { return h.Active() && h.DueAt != nil && h.DueAt.
 
 // VisibleTo — сотрудник видит только опасности, которые сообщил сам или которые ему назначены.
 func (h Hazard) VisibleTo(u User) bool {
-	return h.OrgID == u.OrgID && (u.IsStaff() || eqID(h.AuthorID, u.ID) || eqID(h.ResponsibleID, u.ID))
+	return h.OrgID == u.OrgID && (u.SeesOrg() || eqID(h.AuthorID, u.ID) || eqID(h.ResponsibleID, u.ID))
 }
 
 func (h Hazard) IsResponsible(u User) bool { return eqID(h.ResponsibleID, u.ID) }

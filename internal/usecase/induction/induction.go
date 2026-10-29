@@ -21,12 +21,12 @@ type Repo interface {
 	// SignAssignment подписывает, только если ещё не подписано; false — уже подписано.
 	SignAssignment(ctx context.Context, userID, id int64, s domain.Signature) (bool, error)
 	// CreateAssignments создаёт назначения только для сотрудников этой организации; возвращает их число.
-	CreateAssignments(ctx context.Context, orgID, templateID int64, instructorID *int64, batch, reason string, due time.Time, userIDs []int64) (int, error)
-	BatchExists(ctx context.Context, orgID int64, batch string) (bool, error)
+	CreateAssignments(ctx context.Context, viewer domain.User, templateID int64, instructorID *int64, batch, reason string, due time.Time, userIDs []int64) (int, error)
+	BatchExists(ctx context.Context, viewer domain.User, batch string) (bool, error)
 	UnsignedInBatch(ctx context.Context, orgID int64, batch string) ([]domain.Notice, error)
-	Batches(ctx context.Context, orgID int64) ([]domain.Batch, error)
-	BatchAssignments(ctx context.Context, orgID int64, batch string) ([]domain.Assignment, error)
-	Journal(ctx context.Context, orgID int64, kinds []string, f domain.JournalFilter) ([]domain.Assignment, error)
+	Batches(ctx context.Context, viewer domain.User) ([]domain.Batch, error)
+	BatchAssignments(ctx context.Context, viewer domain.User, batch string) ([]domain.Assignment, error)
+	Journal(ctx context.Context, viewer domain.User, kinds []string, f domain.JournalFilter) ([]domain.Assignment, error)
 	UserAssignments(ctx context.Context, userID int64, signed bool) ([]domain.Assignment, error)
 }
 
@@ -150,6 +150,9 @@ func (s *Service) Template(ctx context.Context, u domain.User, id int64) (domain
 
 // SaveTemplate создаёт (ID=0) или обновляет шаблон. file — новый PDF/видео, если загружен.
 func (s *Service) SaveTemplate(ctx context.Context, u domain.User, t domain.InductionTemplate, file *domain.Upload) error {
+	if !u.SeesOrg() {
+		return domain.ErrForbidden
+	}
 	t.Title, t.TitleKK = domain.Clip(t.Title, domain.MaxTitle), domain.Clip(t.TitleKK, domain.MaxTitle)
 	t.Body = domain.Clip(t.Body, domain.MaxBody)
 	if t.Title == "" || domain.KindLabels[t.Kind] == "" {
@@ -187,6 +190,9 @@ type AssignInput struct {
 
 // Assign назначает инструктаж группе сотрудников; возвращает число назначений.
 func (s *Service) Assign(ctx context.Context, u domain.User, in AssignInput) (int, error) {
+	if u.Role != domain.RoleInstructor && !u.SeesOrg() {
+		return 0, domain.ErrForbidden
+	}
 	if in.TemplateID == nil || in.Due == nil || len(in.UserIDs) == 0 {
 		return 0, domain.Invalid("Выберите инструктаж, сотрудников и срок")
 	}
@@ -206,7 +212,7 @@ func (s *Service) Assign(ctx context.Context, u domain.User, in AssignInput) (in
 		instructor = in.InstructorID
 	}
 	batch := newBatch()
-	n, err := s.repo.CreateAssignments(ctx, u.OrgID, t.ID, instructor, batch, in.Reason, *in.Due, in.UserIDs)
+	n, err := s.repo.CreateAssignments(ctx, u, t.ID, instructor, batch, in.Reason, *in.Due, in.UserIDs)
 	if err != nil || !in.NotifySMS {
 		return n, err
 	}
@@ -235,7 +241,10 @@ func (s *Service) notify(ctx context.Context, orgID int64, batch string) error {
 
 // Remind — повторная SMS тем, кто ещё не подписал.
 func (s *Service) Remind(ctx context.Context, u domain.User, batch string) error {
-	ok, err := s.repo.BatchExists(ctx, u.OrgID, batch)
+	if u.Role != domain.RoleInstructor && !u.SeesOrg() {
+		return domain.ErrForbidden
+	}
+	ok, err := s.repo.BatchExists(ctx, u, batch)
 	if err != nil {
 		return err
 	}
@@ -246,11 +255,11 @@ func (s *Service) Remind(ctx context.Context, u domain.User, batch string) error
 }
 
 func (s *Service) Batches(ctx context.Context, u domain.User) ([]domain.Batch, error) {
-	return s.repo.Batches(ctx, u.OrgID)
+	return s.repo.Batches(ctx, u)
 }
 
 func (s *Service) BatchAssignments(ctx context.Context, u domain.User, batch string) ([]domain.Assignment, error) {
-	return s.repo.BatchAssignments(ctx, u.OrgID, batch)
+	return s.repo.BatchAssignments(ctx, u, batch)
 }
 
 func (s *Service) UserHistory(ctx context.Context, u domain.User, userID int64) ([]domain.Assignment, error) {
@@ -271,5 +280,5 @@ func (s *Service) Journal(ctx context.Context, u domain.User, f domain.JournalFi
 	if f.Workplace {
 		kinds = domain.WorkplaceKinds
 	}
-	return s.repo.Journal(ctx, u.OrgID, kinds, f)
+	return s.repo.Journal(ctx, u, kinds, f)
 }

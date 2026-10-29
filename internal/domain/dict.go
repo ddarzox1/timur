@@ -29,7 +29,9 @@ var (
 	StatusLabels = map[string]string{"open": "Открыто", "in_progress": "В работе", "fixed": "Устранено", "rejected": "Отклонено"}
 	KindOrder    = []string{"intro", "primary", "repeat", "unplanned", "target"}
 	KindLabels   = map[string]string{"intro": "Вводный", "primary": "Первичный", "repeat": "Повторный", "unplanned": "Внеплановый", "target": "Целевой"}
-	RoleLabels   = map[string]string{RoleWorker: "Сотрудник", RoleHSE: "Инженер ОТ", RoleAdmin: "Администратор"}
+	RoleOrder    = []string{RoleWorker, RoleInstructor, RoleSectionHead, RoleShopHead, RoleHSE, RoleAdmin, RoleVisitor}
+	RoleLabels   = map[string]string{RoleWorker: "Работник", RoleInstructor: "Инструктирующий", RoleSectionHead: "Начальник участка", RoleShopHead: "Начальник цеха", RoleHSE: "Специалист БиОТ", RoleAdmin: "Администратор", RoleVisitor: "Посетитель"}
+	RoleLabelsKK = map[string]string{RoleWorker: "Қызметкер", RoleInstructor: "Нұсқама беруші", RoleSectionHead: "Учаске бастығы", RoleShopHead: "Цех бастығы", RoleHSE: "ҚжЕҚ маманы", RoleAdmin: "Әкімші", RoleVisitor: "Келуші"}
 	FreqLabels   = map[string]string{"daily": "Ежедневно", "weekly": "Еженедельно", "once": "Разово"}
 )
 

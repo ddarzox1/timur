@@ -136,6 +136,9 @@ func TestLoginAndRoles(t *testing.T) {
 	e := setup(t)
 	hsePhone, org := e.newUser(t, nil, domain.RoleHSE)
 	workerPhone, _ := e.newUser(t, &org, domain.RoleWorker)
+	instructorPhone, _ := e.newUser(t, &org, domain.RoleInstructor)
+	sectionPhone, _ := e.newUser(t, &org, domain.RoleSectionHead)
+	shopPhone, _ := e.newUser(t, &org, domain.RoleShopHead)
 
 	if res, _ := e.get(t, client(), "/admin"); res.StatusCode != http.StatusSeeOther || res.Header.Get("Location") != "/login" {
 		t.Fatalf("без входа → /login, получили %d %s", res.StatusCode, res.Header.Get("Location"))
@@ -163,6 +166,29 @@ func TestLoginAndRoles(t *testing.T) {
 	}
 	if res, _ := e.get(t, worker, "/m"); res.StatusCode != http.StatusOK {
 		t.Fatal("сотрудник видит мобильную главную")
+	}
+	for role, phone := range map[string]string{
+		domain.RoleInstructor:  instructorPhone,
+		domain.RoleSectionHead: sectionPhone,
+		domain.RoleShopHead:    shopPhone,
+	} {
+		c := e.login(t, phone)
+		if res, _ := e.get(t, c, "/admin"); res.StatusCode != http.StatusOK {
+			t.Errorf("%s: admin dashboard status %d", role, res.StatusCode)
+		}
+		if res, _ := e.get(t, c, "/admin/people"); res.StatusCode != http.StatusOK {
+			t.Errorf("%s: people read status %d", role, res.StatusCode)
+		}
+		wantAssign := http.StatusForbidden
+		if role == domain.RoleInstructor {
+			wantAssign = http.StatusOK
+		}
+		if res, _ := e.get(t, c, "/admin/assign"); res.StatusCode != wantAssign {
+			t.Errorf("%s: assign status %d, want %d", role, res.StatusCode, wantAssign)
+		}
+		if res := e.post(t, c, "/admin/people/save", url.Values{"name": {"X"}}); res.StatusCode != http.StatusForbidden {
+			t.Errorf("%s: people write status %d", role, res.StatusCode)
+		}
 	}
 	e.post(t, worker, "/logout", nil)
 	if res, _ := e.get(t, worker, "/m"); res.StatusCode != http.StatusSeeOther {

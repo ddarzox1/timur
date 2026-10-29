@@ -15,14 +15,14 @@ type HazardCounts struct{ Open, Fixed, AssignedToMe int }
 
 type Repo interface {
 	Org(ctx context.Context, id int64) (domain.Org, error)
-	DashboardCounts(ctx context.Context, orgID int64, periodDays int) (Counts, error)
-	HazardsByWeek(ctx context.Context, orgID int64) ([]domain.Bar, error)
-	HazardsByCategory(ctx context.Context, orgID int64, periodDays int) ([]domain.Bar, error)
-	SignaturesByDepartment(ctx context.Context, orgID int64, periodDays int) ([]domain.Bar, error)
-	OverdueHazards(ctx context.Context, orgID int64, limit int) ([]domain.Hazard, error)
-	OverdueAssignments(ctx context.Context, orgID int64, limit int) ([]domain.Assignment, error)
+	DashboardCounts(ctx context.Context, viewer domain.User, periodDays int) (Counts, error)
+	HazardsByWeek(ctx context.Context, viewer domain.User) ([]domain.Bar, error)
+	HazardsByCategory(ctx context.Context, viewer domain.User, periodDays int) ([]domain.Bar, error)
+	SignaturesByDepartment(ctx context.Context, viewer domain.User, periodDays int) ([]domain.Bar, error)
+	OverdueHazards(ctx context.Context, viewer domain.User, limit int) ([]domain.Hazard, error)
+	OverdueAssignments(ctx context.Context, viewer domain.User, limit int) ([]domain.Assignment, error)
 	// ExpiringRepeats — повторные инструктажи, истекающие в ближайшие days дней, без нового назначения.
-	ExpiringRepeats(ctx context.Context, orgID int64, days int) ([]domain.Expiring, error)
+	ExpiringRepeats(ctx context.Context, viewer domain.User, days int) ([]domain.Expiring, error)
 	UserHazardCounts(ctx context.Context, orgID, userID int64) (HazardCounts, error)
 	UserAssignments(ctx context.Context, userID int64, signed bool) ([]domain.Assignment, error)
 	UserChecklists(ctx context.Context, orgID, userID int64, locationID *int64) ([]domain.ChecklistTemplate, error)
@@ -63,25 +63,25 @@ func (s *Service) Stats(ctx context.Context, u domain.User, periodDays int) (Sta
 		return st, err
 	}
 	st.DaysWithoutInjury = st.Org.DaysWithoutInjury(domain.Today())
-	if st.Counts, err = s.repo.DashboardCounts(ctx, u.OrgID, st.Period); err != nil {
+	if st.Counts, err = s.repo.DashboardCounts(ctx, u, st.Period); err != nil {
 		return st, err
 	}
-	if st.Weeks, err = s.repo.HazardsByWeek(ctx, u.OrgID); err != nil {
+	if st.Weeks, err = s.repo.HazardsByWeek(ctx, u); err != nil {
 		return st, err
 	}
-	if st.Categories, err = s.repo.HazardsByCategory(ctx, u.OrgID, st.Period); err != nil {
+	if st.Categories, err = s.repo.HazardsByCategory(ctx, u, st.Period); err != nil {
 		return st, err
 	}
-	if st.Departments, err = s.repo.SignaturesByDepartment(ctx, u.OrgID, st.Period); err != nil {
+	if st.Departments, err = s.repo.SignaturesByDepartment(ctx, u, st.Period); err != nil {
 		return st, err
 	}
-	if st.OverdueHazardList, err = s.repo.OverdueHazards(ctx, u.OrgID, 10); err != nil {
+	if st.OverdueHazardList, err = s.repo.OverdueHazards(ctx, u, 10); err != nil {
 		return st, err
 	}
-	if st.OverdueAssignments, err = s.repo.OverdueAssignments(ctx, u.OrgID, 10); err != nil {
+	if st.OverdueAssignments, err = s.repo.OverdueAssignments(ctx, u, 10); err != nil {
 		return st, err
 	}
-	if st.Expiring, err = s.repo.ExpiringRepeats(ctx, u.OrgID, st.Org.RepeatWarnDays); err != nil {
+	if st.Expiring, err = s.repo.ExpiringRepeats(ctx, u, st.Org.RepeatWarnDays); err != nil {
 		return st, err
 	}
 	for _, b := range st.Weeks {

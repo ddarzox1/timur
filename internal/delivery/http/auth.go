@@ -12,7 +12,7 @@ import (
 )
 
 func homeFor(u domain.User) string {
-	if u.IsStaff() {
+	if u.HasBackoffice() {
 		return "/admin"
 	}
 	return "/m"

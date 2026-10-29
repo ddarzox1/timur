@@ -4,11 +4,12 @@
 <p><a href="/admin/people">‹ Сотрудники</a></p>
 <h1>{{or .P.Name "Новый сотрудник"}}</h1>
 <div class="grid cols">
-<form class="card" hx-post="/admin/people/save">
+<form class="card" hx-post="/admin/people/save"><fieldset {{if not .Me.SeesOrg}}disabled{{end}} style="border:0;padding:0;margin:0">
   {{if .P.ID}}<input type="hidden" name="id" value="{{.P.ID}}">{{end}}
   <div class="field"><label for="name">ФИО</label><input id="name" name="name" value="{{.P.Name}}" required></div>
   <div class="grid">
-    <div class="field"><label for="phone">Телефон</label><input id="phone" name="phone" type="tel" value="{{phone .P.Phone}}" placeholder="+7 7__ ___ __ __" required></div>
+    <div class="field"><label for="phone">Телефон</label><input id="phone" name="phone" type="tel" value="{{phone .P.Phone}}" placeholder="+7 7__ ___ __ __"></div>
+    <div class="field"><label for="iin">ИИН</label><input id="iin" name="iin" value="{{.P.IIN}}" inputmode="numeric" minlength="12" maxlength="12" pattern="[0-9]{12}" placeholder="12 цифр"></div>
     <div class="field"><label for="by">Год рождения</label><input id="by" name="birth_year" type="number" min="1940" max="2015" value="{{with .P.BirthYear}}{{.}}{{end}}"></div>
   </div>
   <div class="field"><label for="pos">Должность</label><input id="pos" name="position" value="{{.P.Position}}"></div>
@@ -16,10 +17,11 @@
     <div class="field"><label for="dep">Подразделение</label><select id="dep" name="department_id"><option value="">—</option>{{range .Deps}}<option value="{{.ID}}" {{if eq .ID (deref $.P.DepartmentID)}}selected{{end}}>{{.Name}}</option>{{end}}</select></div>
     <div class="field"><label for="loc">Объект</label><select id="loc" name="location_id"><option value="">—</option>{{range .Locs}}<option value="{{.ID}}" {{if eq .ID (deref $.P.LocationID)}}selected{{end}}>{{.Name}}</option>{{end}}</select></div>
   </div>
-  <div class="field"><label for="role">Роль</label><select id="role" name="role">{{range $k := strs "worker" "hse" "admin"}}<option value="{{$k}}" {{if eq $k $.P.Role}}selected{{end}}>{{role $k}}</option>{{end}}</select>
-    <p class="small muted">Сотрудник — мобильная версия. Инженер ОТ — всё, кроме настроек. Администратор — всё.</p></div>
+  <div class="field"><label for="role">Роль</label><select id="role" name="role">{{range $k := strs "worker" "instructor" "section_head" "shop_head" "hse" "admin" "visitor"}}<option value="{{$k}}" {{if eq $k $.P.Role}}selected{{end}}>{{role $k}}</option>{{end}}</select>
+	<p class="small muted">Руководители видят свою область. Специалист БиОТ — всю организацию. Администратор также управляет настройками.</p></div>
   <label class="check field"><input type="checkbox" name="active" value="1" {{if .P.Active}}checked{{end}}> Активен (может входить)</label>
   <button class="btn primary" type="submit">Сохранить</button>
+</fieldset>
 </form>
 {{if .P.ID}}
 <div>

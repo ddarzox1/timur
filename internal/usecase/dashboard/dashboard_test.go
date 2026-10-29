@@ -17,26 +17,26 @@ type memRepo struct {
 func (m *memRepo) Org(context.Context, int64) (domain.Org, error) {
 	return domain.Org{RepeatWarnDays: 21, CreatedAt: time.Date(2026, 10, 6, 8, 0, 0, 0, time.UTC)}, nil
 }
-func (m *memRepo) DashboardCounts(_ context.Context, _ int64, p int) (Counts, error) {
+func (m *memRepo) DashboardCounts(_ context.Context, _ domain.User, p int) (Counts, error) {
 	m.period = p
 	return Counts{OpenHazards: 3}, nil
 }
-func (m *memRepo) HazardsByWeek(context.Context, int64) ([]domain.Bar, error) {
+func (m *memRepo) HazardsByWeek(context.Context, domain.User) ([]domain.Bar, error) {
 	return []domain.Bar{{A: 2, B: 7}, {A: 4, B: 1}}, nil
 }
-func (m *memRepo) HazardsByCategory(context.Context, int64, int) ([]domain.Bar, error) {
+func (m *memRepo) HazardsByCategory(context.Context, domain.User, int) ([]domain.Bar, error) {
 	return []domain.Bar{{A: 5}}, nil
 }
-func (m *memRepo) SignaturesByDepartment(context.Context, int64, int) ([]domain.Bar, error) {
+func (m *memRepo) SignaturesByDepartment(context.Context, domain.User, int) ([]domain.Bar, error) {
 	return nil, nil
 }
-func (m *memRepo) OverdueHazards(context.Context, int64, int) ([]domain.Hazard, error) {
+func (m *memRepo) OverdueHazards(context.Context, domain.User, int) ([]domain.Hazard, error) {
 	return nil, nil
 }
-func (m *memRepo) OverdueAssignments(context.Context, int64, int) ([]domain.Assignment, error) {
+func (m *memRepo) OverdueAssignments(context.Context, domain.User, int) ([]domain.Assignment, error) {
 	return nil, nil
 }
-func (m *memRepo) ExpiringRepeats(_ context.Context, _ int64, days int) ([]domain.Expiring, error) {
+func (m *memRepo) ExpiringRepeats(_ context.Context, _ domain.User, days int) ([]domain.Expiring, error) {
 	m.warn = days
 	return nil, nil
 }

@@ -3,15 +3,17 @@
 {{define "content"}}
 <div class="row between">
   <h1>{{t "Сотрудники"}}</h1>
+  {{if .Me.SeesOrg}}
   <div class="row">
     <a class="btn accent" href="/admin/people/new">＋ Добавить</a>
     <button class="btn" onclick="document.getElementById('imp').showModal()">⬆ Импорт из Excel</button>
   </div>
+  {{end}}
 </div>
 {{with .Imported}}<div class="success">Импортировано: {{.}}</div>{{end}}
 {{if .Errors}}<div class="error">{{range .Errors}}<div>{{.}}</div>{{end}}</div>{{end}}
 <form class="filters" hx-get="/admin/people" hx-trigger="change, keyup changed delay:300ms from:input[name=q]" hx-target="#tbl" hx-select="#tbl" hx-swap="outerHTML" hx-push-url="true">
-  <input name="q" value="{{.Q.Get "q"}}" placeholder="ФИО, телефон, должность" aria-label="Поиск">
+  <input name="q" value="{{.Q.Get "q"}}" placeholder="ФИО, телефон, ИИН, должность" aria-label="Поиск">
   <select name="dept" aria-label="Подразделение"><option value="">Все подразделения</option>{{range .Deps}}<option value="{{.ID}}" {{if eq ($.Q.Get "dept") (printf "%d" .ID)}}selected{{end}}>{{.Name}}</option>{{end}}</select>
   <select name="loc" aria-label="Объект"><option value="">Все объекты</option>{{range .Locs}}<option value="{{.ID}}" {{if eq ($.Q.Get "loc") (printf "%d" .ID)}}selected{{end}}>{{.Name}}</option>{{end}}</select>
 </form>
@@ -24,16 +26,16 @@
   </tr>{{else}}<tr><td colspan="7" class="muted">Сотрудников нет. Добавьте вручную или импортируйте из Excel.</td></tr>{{end}}</tbody>
 </table></div>
 
-<dialog id="imp" class="card" style="max-width:520px;width:100%">
+{{if .Me.SeesOrg}}<dialog id="imp" class="card" style="max-width:520px;width:100%">
   <form hx-post="/admin/people/import" hx-encoding="multipart/form-data">
     <h3>Импорт сотрудников</h3>
     <ol class="small">
-      <li><a href="/admin/people/template.csv" hx-boost="false">Скачайте шаблон</a> и заполните в Excel: ФИО, телефон, год рождения, должность, подразделение, объект.</li>
+      <li><a href="/admin/people/template.csv" hx-boost="false">Скачайте шаблон</a> и заполните в Excel: ФИО, телефон, ИИН, год рождения, должность, подразделение, объект.</li>
       <li>Сохраните как «CSV (разделители — точка с запятой)».</li>
       <li>Загрузите файл. Новые подразделения и объекты создадутся автоматически, существующие телефоны обновятся.</li>
     </ol>
     <div class="field"><input type="file" name="file" accept=".csv,text/csv" required aria-label="CSV-файл"></div>
     <div class="row"><button class="btn primary" type="submit">Импортировать</button><button class="btn" type="button" onclick="this.closest('dialog').close()">Отмена</button></div>
   </form>
-</dialog>
+</dialog>{{end}}
 {{end}}

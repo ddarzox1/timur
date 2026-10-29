@@ -4,7 +4,7 @@
 <p><a href="/admin/inductions">‹ Шаблоны</a></p>
 <h1>{{if .T.ID}}Шаблон инструктажа{{else}}Новый шаблон инструктажа{{end}}</h1>
 <div class="grid split">
-  <form class="card" hx-post="/admin/inductions/save" hx-encoding="multipart/form-data">
+  <form class="card" hx-post="/admin/inductions/save" hx-encoding="multipart/form-data"><fieldset {{if not .Me.SeesOrg}}disabled{{end}} style="border:0;padding:0;margin:0">
     {{if .T.ID}}<input type="hidden" name="id" value="{{.T.ID}}">{{end}}
     <div class="grid">
       <div class="field"><label for="title">Название (RU)</label><input id="title" name="title" value="{{.T.Title}}" required></div>
@@ -23,8 +23,9 @@
     <h3>Требования к подписи</h3>
     <label class="check field"><input type="checkbox" name="require_geo" value="1" {{if .T.RequireGeo}}checked{{end}}> Обязательна геолокация</label>
     <label class="check field"><input type="checkbox" name="require_selfie" value="1" {{if .T.RequireSelfie}}checked{{end}}> Обязательно селфи</label>
-    <button class="btn primary" type="submit">Сохранить</button>
-    {{if .T.ID}}<a class="btn" href="/admin/assign?template={{.T.ID}}">Назначить сотрудникам</a>{{end}}
+    {{if .Me.SeesOrg}}<button class="btn primary" type="submit">Сохранить</button>{{end}}
+    {{if and .T.ID (or (.Me.SeesOrg) (eq .Me.Role "instructor"))}}<a class="btn" href="/admin/assign?template={{.T.ID}}">Назначить сотрудникам</a>{{end}}
+  </fieldset>
   </form>
   <div>
     <p class="muted small">Как увидит сотрудник</p>

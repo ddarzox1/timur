@@ -3,9 +3,13 @@ package domain
 import "time"
 
 const (
-	RoleWorker = "worker"
-	RoleHSE    = "hse"
-	RoleAdmin  = "admin"
+	RoleWorker      = "worker"
+	RoleInstructor  = "instructor"
+	RoleSectionHead = "section_head"
+	RoleShopHead    = "shop_head"
+	RoleHSE         = "hse"
+	RoleAdmin       = "admin"
+	RoleVisitor     = "visitor"
 )
 
 // Теги db используются репозиторием для сканирования строк; на сам домен не влияют.
@@ -14,6 +18,7 @@ type User struct {
 	ID           int64  `db:"id"`
 	OrgID        int64  `db:"org_id"`
 	Phone        string `db:"phone"`
+	IIN          string `db:"iin"`
 	Name         string `db:"name"`
 	BirthYear    *int   `db:"birth_year"`
 	Position     string `db:"position"`
@@ -27,8 +32,16 @@ type User struct {
 	Overdue      bool   `db:"overdue"`
 }
 
-// IsStaff — инженер ОТ или админ: видит всю организацию.
-func (u User) IsStaff() bool { return u.Role == RoleHSE || u.Role == RoleAdmin }
+// SeesOrg — специалист БиОТ или технический администратор: видит всю организацию.
+func (u User) SeesOrg() bool { return u.Role == RoleHSE || u.Role == RoleAdmin }
+
+// ManagesDept — руководитель с областью видимости по подразделению.
+func (u User) ManagesDept() bool { return u.Role == RoleSectionHead || u.Role == RoleShopHead }
+
+// HasBackoffice — роль с доступом к административной части приложения.
+func (u User) HasBackoffice() bool {
+	return u.Role == RoleInstructor || u.ManagesDept() || u.SeesOrg()
+}
 
 type Org struct {
 	ID             int64      `db:"id"`
@@ -83,6 +96,7 @@ type ImportRow struct {
 	Line       int
 	Name       string
 	Phone      string
+	IIN        string
 	BirthYear  *int
 	Position   string
 	Department string

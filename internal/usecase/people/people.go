@@ -16,16 +16,16 @@ import (
 )
 
 type Repo interface {
-	People(ctx context.Context, orgID int64, f domain.PeopleFilter) ([]domain.User, error)
-	Person(ctx context.Context, orgID, id int64) (domain.User, error)
+	People(ctx context.Context, viewer domain.User, f domain.PeopleFilter) ([]domain.User, error)
+	Person(ctx context.Context, viewer domain.User, id int64) (domain.User, error)
 	// CreatePerson / UpdatePerson возвращают domain.ErrConflict, если телефон занят.
 	CreatePerson(ctx context.Context, orgID int64, u domain.User) error
 	UpdatePerson(ctx context.Context, orgID int64, u domain.User) error
 	// ImportPeople — подразделения и объекты ищутся по названию и создаются; телефоны обновляются.
 	// Возвращает число импортированных и номера строк, где телефон занят другой организацией.
 	ImportPeople(ctx context.Context, orgID int64, rows []domain.ImportRow) (int, []int, error)
-	Staff(ctx context.Context, orgID int64) ([]domain.User, error)
-	Departments(ctx context.Context, orgID int64) ([]domain.Department, error)
+	Staff(ctx context.Context, viewer domain.User) ([]domain.User, error)
+	Departments(ctx context.Context, viewer domain.User) ([]domain.Department, error)
 	SaveDepartment(ctx context.Context, orgID int64, d domain.Department) error
 	DeleteDepartment(ctx context.Context, orgID, id int64) error
 	Locations(ctx context.Context, orgID int64) ([]domain.Location, error)
@@ -48,25 +48,38 @@ func New(repo Repo, files Storage) *Service { return &Service{repo: repo, files:
 
 func (s *Service) List(ctx context.Context, u domain.User, f domain.PeopleFilter) ([]domain.User, error) {
 	f.Query = strings.TrimSpace(f.Query)
-	return s.repo.People(ctx, u.OrgID, f)
+	return s.repo.People(ctx, u, f)
 }
 
 func (s *Service) Get(ctx context.Context, u domain.User, id int64) (domain.User, error) {
-	return s.repo.Person(ctx, u.OrgID, id)
+	return s.repo.Person(ctx, u, id)
 }
 
 func (s *Service) Staff(ctx context.Context, u domain.User) ([]domain.User, error) {
-	return s.repo.Staff(ctx, u.OrgID)
+	return s.repo.Staff(ctx, u)
 }
 
 // Save создаёт (ID=0) или обновляет сотрудника.
 // Правила: админа назначает и редактирует только админ; себе нельзя менять роль и отключать доступ.
 func (s *Service) Save(ctx context.Context, by domain.User, p domain.User) error {
+	if !by.SeesOrg() {
+		return domain.ErrForbidden
+	}
 	p.Name = domain.Clip(p.Name, domain.MaxTitle)
 	p.Position = domain.Clip(p.Position, domain.MaxTitle)
 	p.Phone = domain.NormalizePhone(p.Phone)
-	if p.Name == "" || p.Phone == "" || domain.RoleLabels[p.Role] == "" {
+	p.IIN = domain.NormalizeIIN(p.IIN)
+	if p.Name == "" || domain.RoleLabels[p.Role] == "" || (p.Role != domain.RoleVisitor && p.Phone == "") {
 		return domain.Invalid("Укажите ФИО, телефон (+7 7XX XXX XX XX) и роль")
+	}
+	if p.IIN != "" && !domain.ValidIIN(p.IIN) {
+		return domain.Invalid("ИИН должен состоять из 12 цифр и иметь верную контрольную сумму")
+	}
+	if p.Role == domain.RoleVisitor && p.IIN == "" {
+		return domain.Invalid("Для посетителя укажите ИИН")
+	}
+	if p.Role == domain.RoleVisitor {
+		p.Active = false
 	}
 	if p.BirthYear != nil && (*p.BirthYear < 1900 || *p.BirthYear > 2100) {
 		p.BirthYear = nil
@@ -78,7 +91,7 @@ func (s *Service) Save(ctx context.Context, by domain.User, p domain.User) error
 	if p.ID == 0 {
 		err = s.repo.CreatePerson(ctx, by.OrgID, p)
 	} else {
-		old, gerr := s.repo.Person(ctx, by.OrgID, p.ID)
+		old, gerr := s.repo.Person(ctx, by, p.ID)
 		if gerr != nil {
 			return gerr
 		}
@@ -91,13 +104,13 @@ func (s *Service) Save(ctx context.Context, by domain.User, p domain.User) error
 		err = s.repo.UpdatePerson(ctx, by.OrgID, p)
 	}
 	if errors.Is(err, domain.ErrConflict) {
-		return domain.Invalid("Сотрудник с таким телефоном уже есть")
+		return domain.Invalid("Сотрудник с таким телефоном или ИИН уже есть")
 	}
 	return err
 }
 
 // ImportHeader — колонки шаблона импорта.
-var ImportHeader = []string{"ФИО", "Телефон", "Год рождения", "Должность", "Подразделение", "Объект"}
+var ImportHeader = []string{"ФИО", "Телефон", "ИИН", "Год рождения", "Должность", "Подразделение", "Объект"}
 
 type ImportResult struct {
 	Imported int
@@ -144,9 +157,14 @@ func ParseCSV(r io.Reader) ([]domain.ImportRow, []string, error) {
 			errs = append(errs, fmt.Sprintf("Строка %d: нужны ФИО и телефон", line))
 			continue
 		}
-		row := domain.ImportRow{Line: line, Name: domain.Clip(rec[0], domain.MaxTitle), Phone: phone, Position: domain.Clip(rec[3], domain.MaxTitle),
-			Department: domain.Clip(rec[4], domain.MaxTitle), Location: domain.Clip(rec[5], domain.MaxTitle)}
-		if y, err := strconv.Atoi(rec[2]); err == nil && y > 1900 {
+		iin := domain.NormalizeIIN(rec[2])
+		if iin != "" && !domain.ValidIIN(iin) {
+			errs = append(errs, fmt.Sprintf("Строка %d: неверный ИИН", line))
+			continue
+		}
+		row := domain.ImportRow{Line: line, Name: domain.Clip(rec[0], domain.MaxTitle), Phone: phone, IIN: iin, Position: domain.Clip(rec[4], domain.MaxTitle),
+			Department: domain.Clip(rec[5], domain.MaxTitle), Location: domain.Clip(rec[6], domain.MaxTitle)}
+		if y, err := strconv.Atoi(rec[3]); err == nil && y > 1900 {
 			row.BirthYear = &y
 		}
 		rows = append(rows, row)
@@ -155,6 +173,9 @@ func ParseCSV(r io.Reader) ([]domain.ImportRow, []string, error) {
 }
 
 func (s *Service) Import(ctx context.Context, u domain.User, r io.Reader) (ImportResult, error) {
+	if !u.SeesOrg() {
+		return ImportResult{}, domain.ErrForbidden
+	}
 	rows, errs, err := ParseCSV(r)
 	if err != nil {
 		return ImportResult{}, err
@@ -175,7 +196,7 @@ func (s *Service) Import(ctx context.Context, u domain.User, r io.Reader) (Impor
 // --- оргструктура ---
 
 func (s *Service) Departments(ctx context.Context, u domain.User) ([]domain.Department, error) {
-	return s.repo.Departments(ctx, u.OrgID)
+	return s.repo.Departments(ctx, u)
 }
 
 func (s *Service) Locations(ctx context.Context, u domain.User) ([]domain.Location, error) {
@@ -196,6 +217,9 @@ func (s *Service) Location(ctx context.Context, u domain.User, id int64) (domain
 }
 
 func (s *Service) SaveDepartment(ctx context.Context, u domain.User, d domain.Department) error {
+	if !u.SeesOrg() {
+		return domain.ErrForbidden
+	}
 	d.Name = domain.Clip(d.Name, domain.MaxTitle)
 	if d.Name == "" {
 		return domain.Invalid("Укажите название подразделения")
@@ -207,10 +231,16 @@ func (s *Service) SaveDepartment(ctx context.Context, u domain.User, d domain.De
 }
 
 func (s *Service) DeleteDepartment(ctx context.Context, u domain.User, id int64) error {
+	if !u.SeesOrg() {
+		return domain.ErrForbidden
+	}
 	return s.repo.DeleteDepartment(ctx, u.OrgID, id)
 }
 
 func (s *Service) SaveLocation(ctx context.Context, u domain.User, l domain.Location, evacuation *domain.Upload) error {
+	if !u.SeesOrg() {
+		return domain.ErrForbidden
+	}
 	l.Name, l.Address = domain.Clip(l.Name, domain.MaxTitle), domain.Clip(l.Address, domain.MaxTitle)
 	if l.Name == "" {
 		return domain.Invalid("Укажите название объекта")
