@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"path"
@@ -62,6 +63,21 @@ func (s *S3) Save(orgID int64, f domain.Upload, onlyType string) (string, error)
 		return "", fmt.Errorf("S3: загрузка: %w", err)
 	}
 	return fileURL(orgID, name), nil
+}
+
+func (s *S3) Read(orgID int64, name string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	obj, err := s.client.GetObject(ctx, s.bucket, key(orgID, name), minio.GetObjectOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("S3: чтение: %w", err)
+	}
+	defer obj.Close()
+	b, err := io.ReadAll(obj)
+	if err != nil {
+		return nil, fmt.Errorf("S3: чтение: %w", err)
+	}
+	return b, nil
 }
 
 // Serve отвечает редиректом на подписанную ссылку. Права (своя организация) уже проверены вызывающим.

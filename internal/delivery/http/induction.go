@@ -18,26 +18,34 @@ func (h *Handler) mInduction(w http.ResponseWriter, r *http.Request, u domain.Us
 		return err
 	}
 	data := map[string]any{"A": rd.Assignment, "T": rd.Template}
+	data["OpID"] = r.URL.Query().Get("op")
 	if rd.Location != nil {
 		data["Loc"] = *rd.Location
 	}
 	return render(w, r, "m_induction", data)
 }
 
-func (h *Handler) mSign(w http.ResponseWriter, r *http.Request, u domain.User) error {
-	if err := parseForm(r, maxForm); err != nil {
-		return err
-	}
-	selfie, done := upload(r, "selfie")
-	defer done()
-	err := h.inductions.Sign(r.Context(), u, pathID(r), induction.SignInput{
-		Agree: r.FormValue("agree") == "1", Signature: r.FormValue("signature"), Selfie: selfie,
-		Lat: formFloat(r, "lat"), Lng: formFloat(r, "lng"),
-	})
+func (h *Handler) mStartEDS(w http.ResponseWriter, r *http.Request, u domain.User) error {
+	op, err := h.inductions.StartMobile(r.Context(), u, pathID(r))
 	if err != nil {
 		return err
 	}
-	return redirect(w, r, fmt.Sprintf("/m/inductions/%d?done", pathID(r)))
+	return redirect(w, r, fmt.Sprintf("/m/inductions/%d?op=%s", pathID(r), op.ID))
+}
+
+func (h *Handler) mEDSStatus(w http.ResponseWriter, r *http.Request, u domain.User) error {
+	op, err := h.inductions.SigningStatus(r.Context(), u, r.PathValue("op"))
+	if err != nil {
+		return err
+	}
+	return renderBlock(w, r, "m_induction", "edsStatus", map[string]any{"Op": op, "ID": pathID(r)})
+}
+
+func (h *Handler) mEDSFake(w http.ResponseWriter, r *http.Request, u domain.User) error {
+	if err := h.inductions.CompleteFake(r.PathValue("op"), u.IIN, u.Name); err != nil {
+		return err
+	}
+	return h.mEDSStatus(w, r, u)
 }
 
 // --- шаблоны ---
@@ -127,11 +135,62 @@ func (h *Handler) assign(w http.ResponseWriter, r *http.Request, u domain.User) 
 		TemplateID: formID(r, "template_id"), UserIDs: formIDs(r, "user_ids"), Due: formDate(r, "due_at"),
 		InstructorID: formID(r, "instructor_id"), LocationID: formID(r, "location_id"), Reason: r.FormValue("reason"),
 		Basis: r.FormValue("basis"), WorkType: r.FormValue("work_type"), Docs: r.FormValue("docs"), NotifySMS: r.FormValue("notify") == "sms",
+		AllowVisitors: r.FormValue("allow_visitors") == "1",
 	})
 	if err != nil {
 		return err
 	}
 	return redirect(w, r, "/admin/assignments?assigned="+strconv.Itoa(n))
+}
+
+func (h *Handler) kiosk(w http.ResponseWriter, r *http.Request, u domain.User) error {
+	batch := r.PathValue("batch")
+	state, err := h.inductions.KioskState(r.Context(), u, batch)
+	if err != nil {
+		return err
+	}
+	rows, err := h.inductions.BatchAssignments(r.Context(), u, batch)
+	if err != nil {
+		return err
+	}
+	return render(w, r, "kiosk", map[string]any{"Batch": batch, "State": state, "Rows": rows, "OpID": r.URL.Query().Get("op")})
+}
+
+func (h *Handler) kioskStart(w http.ResponseWriter, r *http.Request, u domain.User) error {
+	op, err := h.inductions.StartKiosk(r.Context(), u, r.PathValue("batch"))
+	if err != nil {
+		return err
+	}
+	return redirect(w, r, "/admin/sessions/"+r.PathValue("batch")+"/kiosk?op="+op.ID)
+}
+
+func (h *Handler) kioskStatus(w http.ResponseWriter, r *http.Request, u domain.User) error {
+	op, err := h.inductions.SigningStatus(r.Context(), u, r.PathValue("op"))
+	if err != nil {
+		return err
+	}
+	return renderBlock(w, r, "kiosk", "kioskStatus", map[string]any{"Op": op, "Batch": r.PathValue("batch")})
+}
+
+func (h *Handler) kioskFake(w http.ResponseWriter, r *http.Request, u domain.User) error {
+	if err := parseForm(r, maxForm); err != nil {
+		return err
+	}
+	if err := h.inductions.CompleteFake(r.PathValue("op"), r.FormValue("iin"), r.FormValue("name")); err != nil {
+		return err
+	}
+	return h.kioskStatus(w, r, u)
+}
+
+func (h *Handler) ddc(w http.ResponseWriter, r *http.Request, u domain.User) error {
+	b, err := h.inductions.DDC(r.Context(), u, r.PathValue("batch"))
+	if err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/pdf")
+	w.Header().Set("Content-Disposition", `inline; filename="induction-ddc.pdf"`)
+	_, err = w.Write(b)
+	return err
 }
 
 func (h *Handler) assignments(w http.ResponseWriter, r *http.Request, u domain.User) error {
@@ -193,19 +252,24 @@ func (h *Handler) journalCSV(w http.ResponseWriter, r *http.Request, u domain.Us
 		return err
 	}
 	cw := startCSV(w, "journal.csv")
-	cw.Write([]string{"Дата", "ФИО", "Год рождения", "Профессия, должность", "Вид инструктажа", "Причина", "Рабочее место", "Основание", "Вид работ", "Документы", "Инструктирующий", "Подписано", "Геолокация"})
+	cw.Write([]string{"Дата", "ФИО", "Год рождения", "Профессия, должность", "Вид инструктажа", "Причина", "Рабочее место", "Основание", "Вид работ", "Документы", "Инструктирующий", "ЭЦП инструктирующего", "ЭЦП инструктируемого", "ИИН (маска)", "SIGEX"})
 	for _, x := range rows {
-		by, geo := "", ""
+		by := ""
 		if x.BirthYear != nil {
 			by = strconv.Itoa(*x.BirthYear)
 		}
-		if x.GeoOK != nil {
-			geo = map[bool]string{true: "на объекте", false: "вне объекта"}[*x.GeoOK]
-		}
 		cw.Write([]string{fmtDate(x.SignedAt), x.UserName, by, x.Position, domain.KindLabels[x.Kind] + ": " + x.Title, x.Reason,
 			x.WorkLocation, x.Basis, x.WorkType, x.Docs,
-			strings.Trim(x.Instructor+", "+x.InstructorPos, ", "), fmtDateTime(x.SignedAt), geo})
+			strings.Trim(x.Instructor+", "+x.InstructorPos, ", "), x.InstructorSignerName + " " + fmtDateTime(x.InstructorSignedAt),
+			x.SignerName + " " + fmtDateTime(x.SignedAt), maskIIN(x.SignerIIN), x.SIGEXID})
 	}
 	cw.Flush()
 	return cw.Error()
+}
+
+func maskIIN(s string) string {
+	if len(s) != 12 {
+		return s
+	}
+	return "********" + s[8:]
 }

@@ -15,18 +15,21 @@ var ctx = context.Background()
 
 type memRepo struct {
 	Repo
-	templates map[int64]domain.InductionTemplate
-	assigns   map[int64]domain.Assignment
-	signed    map[int64]domain.Signature
-	created   []int64
-	reason    string
-	instr     *int64
-	unsigned  []domain.Notice
-	users     map[int64]domain.User
-	location  *int64
-	basis     string
-	workType  string
-	docs      string
+	templates   map[int64]domain.InductionTemplate
+	assigns     map[int64]domain.Assignment
+	signed      map[int64]domain.Signature
+	created     []int64
+	reason      string
+	instr       *int64
+	unsigned    []domain.Notice
+	users       map[int64]domain.User
+	location    *int64
+	basis       string
+	workType    string
+	docs        string
+	kiosk       domain.KioskState
+	expectedIIN string
+	edsSigns    []domain.EDSSignature
 }
 
 func (m *memRepo) InductionTemplate(_ context.Context, org, id int64) (domain.InductionTemplate, error) {
@@ -60,7 +63,7 @@ func (m *memRepo) UsersForAssignment(_ context.Context, _ domain.User, ids []int
 	return out, nil
 }
 func (m *memRepo) CreateAssignments(_ context.Context, _ domain.User, _ int64, instr, location *int64,
-	_, reason, basis, workType, docs string, _ time.Time, ids []int64) (int, error) {
+	_, reason, basis, workType, docs string, _ time.Time, ids []int64, _ domain.InductionDoc) (int, error) {
 	m.created, m.reason, m.instr, m.location = ids, reason, instr, location
 	m.basis, m.workType, m.docs = basis, workType, docs
 	return len(ids), nil
@@ -78,6 +81,22 @@ func (m *memRepo) SaveInductionTemplate(_ context.Context, _ int64, t domain.Ind
 	m.templates[99] = t
 	return nil
 }
+func (m *memRepo) KioskState(_ context.Context, viewer domain.User, _ string) (domain.KioskState, error) {
+	if viewer.OrgID != 1 {
+		return domain.KioskState{}, domain.ErrNotFound
+	}
+	return m.kiosk, nil
+}
+func (m *memRepo) CanSignBatch(_ context.Context, _ domain.User, _, iin string) error {
+	if iin != m.expectedIIN {
+		return domain.Invalid("ИИН не ожидается")
+	}
+	return nil
+}
+func (m *memRepo) ApplyBatchEDS(_ context.Context, _ domain.User, _ string, sig domain.EDSSignature) error {
+	m.edsSigns = append(m.edsSigns, sig)
+	return nil
+}
 
 type dir struct{}
 
@@ -91,10 +110,41 @@ func (dir) UserName(_ context.Context, org, id int64) (string, error) {
 	}
 	return "", domain.ErrNotFound
 }
+func (dir) DirectoryUser(_ context.Context, org, id int64) (domain.User, error) {
+	if org == 1 && id < 100 {
+		return domain.User{ID: id, OrgID: org, Name: "Айгерим", IIN: "870514300470"}, nil
+	}
+	return domain.User{}, domain.ErrNotFound
+}
+func (dir) Org(_ context.Context, id int64) (domain.Org, error) {
+	return domain.Org{ID: id, Name: "Тест", BIN: "123"}, nil
+}
 
 type files struct{}
 
 func (files) Save(int64, domain.Upload, string) (string, error) { return "/files/1/s.jpg", nil }
+func (files) Read(int64, string) ([]byte, error)                { return []byte("pdf"), nil }
+
+type protocol struct{}
+
+func (protocol) Build(domain.ProtocolInput) ([]byte, string, error) {
+	return []byte("%PDF-test"), "sum", nil
+}
+
+type eds struct{ result EDSResult }
+
+func (*eds) Start(context.Context, []byte, string) (EDSOperation, error) {
+	return EDSOperation{ID: "op"}, nil
+}
+func (e *eds) Poll(context.Context, string) (EDSResult, error) { return e.result, nil }
+func (*eds) Register(context.Context, string, []byte, string) (string, int64, error) {
+	return "doc", 1, nil
+}
+func (*eds) BuildDDC(context.Context, string, []byte) ([]byte, error) { return nil, nil }
+func (e *eds) Complete(_ string, iin, name string) error {
+	e.result = EDSResult{Done: true, IIN: iin, Name: name, CMS: "cms"}
+	return nil
+}
 
 type sms struct{ sent []string }
 
@@ -123,12 +173,14 @@ func setup() (*Service, *memRepo, *sms) {
 		},
 		signed: map[int64]domain.Signature{},
 		users: map[int64]domain.User{
-			10: {ID: 10, Position: "Монтажник"},
-			11: {ID: 11, Position: "Сварщик"},
+			10: {ID: 10, Position: "Монтажник", IIN: "900101300017"},
+			11: {ID: 11, Position: "Сварщик", IIN: "900101300027"},
 		},
+		kiosk:       domain.KioskState{Doc: domain.InductionDoc{OrgID: 1, Batch: "b", PDFPath: "/files/1/p.pdf"}, Total: 1},
+		expectedIIN: "900101300017",
 	}
 	s := &sms{}
-	return New(repo, dir{}, files{}, s, "https://q.kz/"), repo, s
+	return New(repo, dir{}, files{}, s, protocol{}, &eds{}, "https://q.kz/"), repo, s
 }
 
 func f(v float64) *float64 { return &v }
@@ -194,11 +246,11 @@ func TestAssign(t *testing.T) {
 	if _, err := s.Assign(ctx, hse, AssignInput{TemplateID: tpl(4), Due: &due, UserIDs: []int64{10}}); !isInvalid(err, "рабочее место") {
 		t.Fatalf("первичный без рабочего места: %v", err)
 	}
-	repo.users[10] = domain.User{ID: 10}
+	repo.users[10] = domain.User{ID: 10, IIN: "900101300017"}
 	if _, err := s.Assign(ctx, hse, AssignInput{TemplateID: tpl(4), Due: &due, UserIDs: []int64{10}, LocationID: &loc}); !isInvalid(err, "профессия") {
 		t.Fatalf("первичный без должности: %v", err)
 	}
-	repo.users[10] = domain.User{ID: 10, Position: "Монтажник"}
+	repo.users[10] = domain.User{ID: 10, Position: "Монтажник", IIN: "900101300017"}
 	if _, err := s.Assign(ctx, hse, AssignInput{TemplateID: tpl(5), Due: &due, UserIDs: []int64{10}}); !isInvalid(err, "основание") {
 		t.Fatalf("целевой без полей: %v", err)
 	}
@@ -216,6 +268,21 @@ func TestAssign(t *testing.T) {
 	}
 	if err := s.Remind(ctx, domain.User{OrgID: 2, Role: domain.RoleHSE}, "b"); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatal("чужая партия назначений")
+	}
+}
+
+func TestEDSOperation(t *testing.T) {
+	s, repo, _ := setup()
+	op, err := s.StartKiosk(ctx, hse, "b")
+	if err != nil || op.ID != "op" {
+		t.Fatalf("start: %+v %v", op, err)
+	}
+	if err := s.CompleteFake(op.ID, "900101300017", "Иван Иванов"); err != nil {
+		t.Fatal(err)
+	}
+	status, err := s.SigningStatus(ctx, hse, op.ID)
+	if err != nil || !status.Done || len(repo.edsSigns) != 1 || repo.edsSigns[0].SIGEXID != "doc" {
+		t.Fatalf("status=%+v signs=%+v err=%v", status, repo.edsSigns, err)
 	}
 }
 

@@ -20,6 +20,10 @@ func (s *Store) UserName(ctx context.Context, orgID, id int64) (string, error) {
 	return name, notFound(err)
 }
 
+func (s *Store) DirectoryUser(ctx context.Context, orgID, id int64) (domain.User, error) {
+	return one[domain.User](ctx, s.db, `SELECT `+userCols+` FROM users u `+userJoins+` WHERE u.id = $1 AND u.org_id = $2`, id, orgID)
+}
+
 func (s *Store) Org(ctx context.Context, id int64) (domain.Org, error) {
 	return one[domain.Org](ctx, s.db, `SELECT id, name, bin, last_injury_at, repeat_warn_days, created_at FROM orgs WHERE id = $1`, id)
 }

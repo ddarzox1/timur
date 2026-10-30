@@ -21,6 +21,8 @@ import (
 
 	httpdelivery "qauipsiz/internal/delivery/http"
 	"qauipsiz/internal/domain"
+	pdfinfra "qauipsiz/internal/infra/pdf"
+	"qauipsiz/internal/infra/sigex"
 	"qauipsiz/internal/infra/storage"
 	"qauipsiz/internal/repository/postgres"
 	"qauipsiz/internal/usecase/auth"
@@ -67,7 +69,7 @@ func setupWith(t *testing.T, fs httpdelivery.FileServer) env {
 	h := httpdelivery.New(httpdelivery.Services{
 		Auth:       auth.New(store, nopSMS{}, "1111"),
 		Hazards:    hz,
-		Inductions: induction.New(store, store, files, nopSMS{}, "http://test"),
+		Inductions: induction.New(store, store, files, nopSMS{}, pdfinfra.Protocol{}, sigex.NewFake(), "http://test"),
 		Checklists: checklist.New(store, store, files, hz),
 		People:     people.New(store, files),
 		Dashboard:  dashboard.New(store),

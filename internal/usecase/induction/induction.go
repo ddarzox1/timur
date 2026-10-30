@@ -2,11 +2,14 @@
 package induction
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"qauipsiz/internal/domain"
@@ -23,22 +26,50 @@ type Repo interface {
 	// CreateAssignments создаёт назначения только для сотрудников этой организации; возвращает их число.
 	UsersForAssignment(ctx context.Context, viewer domain.User, userIDs []int64) ([]domain.User, error)
 	CreateAssignments(ctx context.Context, viewer domain.User, templateID int64, instructorID, locationID *int64,
-		batch, reason, basis, workType, docs string, due time.Time, userIDs []int64) (int, error)
+		batch, reason, basis, workType, docs string, due time.Time, userIDs []int64, doc domain.InductionDoc) (int, error)
 	BatchExists(ctx context.Context, viewer domain.User, batch string) (bool, error)
 	UnsignedInBatch(ctx context.Context, orgID int64, batch string) ([]domain.Notice, error)
 	Batches(ctx context.Context, viewer domain.User) ([]domain.Batch, error)
 	BatchAssignments(ctx context.Context, viewer domain.User, batch string) ([]domain.Assignment, error)
 	Journal(ctx context.Context, viewer domain.User, kinds []string, f domain.JournalFilter) ([]domain.Assignment, error)
 	UserAssignments(ctx context.Context, userID int64, signed bool) ([]domain.Assignment, error)
+	KioskState(ctx context.Context, viewer domain.User, batch string) (domain.KioskState, error)
+	CanSignBatch(ctx context.Context, viewer domain.User, batch, iin string) error
+	ApplyBatchEDS(ctx context.Context, viewer domain.User, batch string, sig domain.EDSSignature) error
 }
 
 type Directory interface {
 	Location(ctx context.Context, orgID, id int64) (domain.Location, error)
 	UserName(ctx context.Context, orgID, id int64) (string, error)
+	DirectoryUser(ctx context.Context, orgID, id int64) (domain.User, error)
+	Org(ctx context.Context, id int64) (domain.Org, error)
 }
 
 type Storage interface {
 	Save(orgID int64, f domain.Upload, onlyType string) (string, error)
+	Read(orgID int64, name string) ([]byte, error)
+}
+
+type ProtocolBuilder interface {
+	Build(domain.ProtocolInput) ([]byte, string, error)
+}
+
+type EDSOperation struct {
+	ID, QRCode, LaunchLink string
+	ExpiresAt              time.Time
+}
+
+type EDSResult struct {
+	Done           bool
+	IIN, Name, CMS string
+}
+
+type EDS interface {
+	Start(context.Context, []byte, string) (EDSOperation, error)
+	Poll(context.Context, string) (EDSResult, error)
+	Register(context.Context, string, []byte, string) (string, int64, error)
+	BuildDDC(context.Context, string, []byte) ([]byte, error)
+	Complete(string, string, string) error
 }
 
 type SMSSender interface {
@@ -46,15 +77,18 @@ type SMSSender interface {
 }
 
 type Service struct {
-	repo    Repo
-	dir     Directory
-	files   Storage
-	sms     SMSSender
-	baseURL string
+	repo     Repo
+	dir      Directory
+	files    Storage
+	sms      SMSSender
+	protocol ProtocolBuilder
+	eds      EDS
+	ops      sync.Map // ponytail: при нескольких инстансах перенести операции подписания в БД.
+	baseURL  string
 }
 
-func New(repo Repo, dir Directory, files Storage, sms SMSSender, baseURL string) *Service {
-	return &Service{repo: repo, dir: dir, files: files, sms: sms, baseURL: strings.TrimRight(baseURL, "/")}
+func New(repo Repo, dir Directory, files Storage, sms SMSSender, protocol ProtocolBuilder, eds EDS, baseURL string) *Service {
+	return &Service{repo: repo, dir: dir, files: files, sms: sms, protocol: protocol, eds: eds, baseURL: strings.TrimRight(baseURL, "/")}
 }
 
 // --- сотрудник ---
@@ -185,16 +219,17 @@ func (s *Service) SaveTemplate(ctx context.Context, u domain.User, t domain.Indu
 // --- назначения ---
 
 type AssignInput struct {
-	TemplateID   *int64
-	UserIDs      []int64
-	Due          *time.Time
-	InstructorID *int64
-	Reason       string
-	LocationID   *int64
-	Basis        string
-	WorkType     string
-	Docs         string
-	NotifySMS    bool
+	TemplateID    *int64
+	UserIDs       []int64
+	Due           *time.Time
+	InstructorID  *int64
+	Reason        string
+	LocationID    *int64
+	Basis         string
+	WorkType      string
+	Docs          string
+	NotifySMS     bool
+	AllowVisitors bool
 }
 
 // Assign назначает инструктаж группе сотрудников; возвращает число назначений.
@@ -223,6 +258,11 @@ func (s *Service) Assign(ctx context.Context, u domain.User, in AssignInput) (in
 	if len(users) != len(in.UserIDs) {
 		return 0, domain.Invalid("Часть сотрудников недоступна в вашей области")
 	}
+	for _, person := range users {
+		if !domain.ValidIIN(person.IIN) {
+			return 0, domain.Invalid("Для подписи ЭЦП у каждого участника должен быть указан корректный ИИН")
+		}
+	}
 	if t.Kind == "primary" {
 		if in.LocationID == nil {
 			return 0, domain.Invalid("Для первичного инструктажа укажите рабочее место")
@@ -248,8 +288,51 @@ func (s *Service) Assign(ctx context.Context, u domain.User, in AssignInput) (in
 		}
 		instructor = in.InstructorID
 	}
+	if instructor == nil {
+		return 0, domain.Invalid("Укажите инструктирующего для подписания протокола ЭЦП")
+	}
+	instructorUser, err := s.dir.DirectoryUser(ctx, u.OrgID, *instructor)
+	if err != nil {
+		return 0, domain.Invalid("Неизвестный инструктирующий")
+	}
+	if !domain.ValidIIN(instructorUser.IIN) {
+		return 0, domain.Invalid("У инструктирующего должен быть указан корректный ИИН")
+	}
 	batch := newBatch()
-	n, err := s.repo.CreateAssignments(ctx, u, t.ID, instructor, in.LocationID, batch, in.Reason, in.Basis, in.WorkType, in.Docs, *in.Due, in.UserIDs)
+	org, err := s.dir.Org(ctx, u.OrgID)
+	if err != nil {
+		return 0, err
+	}
+	location := ""
+	if in.LocationID != nil {
+		loc, err := s.dir.Location(ctx, u.OrgID, *in.LocationID)
+		if err != nil {
+			return 0, err
+		}
+		location = loc.Name
+	}
+	assignedAt := time.Now()
+	materialHash := sha256.New()
+	materialHash.Write([]byte(t.Body))
+	if t.FilePath != "" {
+		material, err := s.files.Read(u.OrgID, t.FilePath)
+		if err != nil {
+			return 0, err
+		}
+		materialHash.Write(material)
+	}
+	pdfBytes, sum, err := s.protocol.Build(domain.ProtocolInput{Org: org, Template: t, Batch: batch, AssignedAt: assignedAt,
+		DueAt: *in.Due, Instructor: instructorUser.Name, Location: location, Reason: in.Reason, Basis: in.Basis,
+		WorkType: in.WorkType, Docs: in.Docs, MaterialSHA: fmt.Sprintf("%x", materialHash.Sum(nil))})
+	if err != nil {
+		return 0, err
+	}
+	pdfPath, err := s.files.Save(u.OrgID, domain.Upload{Name: "protocol.pdf", Size: int64(len(pdfBytes)), Content: bytes.NewReader(pdfBytes)}, "application/pdf")
+	if err != nil {
+		return 0, err
+	}
+	doc := domain.InductionDoc{OrgID: u.OrgID, Batch: batch, PDFPath: pdfPath, SHA256: sum, AllowVisitors: in.AllowVisitors}
+	n, err := s.repo.CreateAssignments(ctx, u, t.ID, instructor, in.LocationID, batch, in.Reason, in.Basis, in.WorkType, in.Docs, *in.Due, in.UserIDs, doc)
 	if err != nil || !in.NotifySMS {
 		return n, err
 	}
@@ -297,6 +380,10 @@ func (s *Service) Batches(ctx context.Context, u domain.User) ([]domain.Batch, e
 
 func (s *Service) BatchAssignments(ctx context.Context, u domain.User, batch string) ([]domain.Assignment, error) {
 	return s.repo.BatchAssignments(ctx, u, batch)
+}
+
+func (s *Service) KioskState(ctx context.Context, u domain.User, batch string) (domain.KioskState, error) {
+	return s.repo.KioskState(ctx, u, batch)
 }
 
 func (s *Service) UserHistory(ctx context.Context, u domain.User, userID int64) ([]domain.Assignment, error) {

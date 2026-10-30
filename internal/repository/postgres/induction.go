@@ -4,16 +4,22 @@ import (
 	"context"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+
 	"qauipsiz/internal/domain"
 )
 
 const assignmentSelect = `SELECT a.id, a.template_id, a.user_id, a.batch, a.reason, a.location_id, coalesce(al.name, '') AS work_location,
 	a.basis, a.work_type, a.docs, a.assigned_at, a.due_at, a.signed_at, a.signature,
 	a.selfie_path, a.geo_ok, t.title, t.title_kk, t.kind, u.name AS user_name, u.birth_year, u.position,
-	coalesce(d.name, '') AS department, coalesce(i.name, '') AS instructor, coalesce(i.position, '') AS instructor_pos
+	coalesce(d.name, '') AS department, coalesce(i.name, '') AS instructor, coalesce(i.position, '') AS instructor_pos,
+	coalesce(u.iin, '') AS user_iin, a.iin, a.signer_name, a.cms, a.sigex_sign_id,
+	ed.instructor_signed_at, coalesce(ed.instructor_iin, '') AS instructor_signer_iin,
+	coalesce(ed.instructor_name, '') AS instructor_signer_name, coalesce(ed.sigex_id, '') AS sigex_id
 	FROM induction_assignments a JOIN induction_templates t ON t.id = a.template_id JOIN users u ON u.id = a.user_id
 	LEFT JOIN departments d ON d.id = u.department_id LEFT JOIN users i ON i.id = a.instructor_id
-	LEFT JOIN locations al ON al.id = a.location_id`
+	LEFT JOIN locations al ON al.id = a.location_id
+	LEFT JOIN induction_docs ed ON ed.org_id = a.org_id AND ed.batch = a.batch`
 
 func (s *Store) InductionTemplates(ctx context.Context, orgID int64) ([]domain.InductionTemplate, error) {
 	return list[domain.InductionTemplate](ctx, s.db, `SELECT t.id, t.title, t.title_kk, t.kind, t.repeat_months, t.instructor_id,
@@ -64,18 +70,134 @@ func (s *Store) UsersForAssignment(ctx context.Context, viewer domain.User, user
 }
 
 func (s *Store) CreateAssignments(ctx context.Context, viewer domain.User, templateID int64, instructorID, locationID *int64,
-	batch, reason, basis, workType, docs string, due time.Time, userIDs []int64) (int, error) {
+	batch, reason, basis, workType, docs string, due time.Time, userIDs []int64, doc domain.InductionDoc) (int, error) {
 	deps, err := s.scopeDepts(ctx, viewer)
 	if err != nil {
 		return 0, err
 	}
-	// Сотрудники фильтруются по организации и области видимости.
-	tag, err := s.db.Exec(ctx, `INSERT INTO induction_assignments
-		(org_id, template_id, user_id, instructor_id, location_id, batch, reason, basis, work_type, docs, due_at)
-		SELECT $1, $2, id, $3, $4, $5, $6, $7, $8, $9, $10 FROM users
-		WHERE org_id = $1 AND id = ANY($11) AND ($12::bigint[] IS NULL OR department_id = ANY($12))`,
-		viewer.OrgID, templateID, instructorID, locationID, batch, reason, basis, workType, docs, due, userIDs, deps)
-	return int(tag.RowsAffected()), err
+	var n int
+	err = pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+		// Сотрудники фильтруются по организации и области видимости.
+		tag, err := tx.Exec(ctx, `INSERT INTO induction_assignments
+			(org_id, template_id, user_id, instructor_id, location_id, batch, reason, basis, work_type, docs, due_at)
+			SELECT $1, $2, id, $3, $4, $5, $6, $7, $8, $9, $10 FROM users
+			WHERE org_id = $1 AND id = ANY($11) AND ($12::bigint[] IS NULL OR department_id = ANY($12))`,
+			viewer.OrgID, templateID, instructorID, locationID, batch, reason, basis, workType, docs, due, userIDs, deps)
+		if err != nil {
+			return err
+		}
+		n = int(tag.RowsAffected())
+		_, err = tx.Exec(ctx, `INSERT INTO induction_docs (org_id, batch, pdf_path, sha256, allow_visitors)
+			VALUES ($1,$2,$3,$4,$5)`, doc.OrgID, doc.Batch, doc.PDFPath, doc.SHA256, doc.AllowVisitors)
+		return err
+	})
+	return n, err
+}
+
+func (s *Store) KioskState(ctx context.Context, viewer domain.User, batch string) (domain.KioskState, error) {
+	if ok, err := s.BatchExists(ctx, viewer, batch); err != nil || !ok {
+		if err != nil {
+			return domain.KioskState{}, err
+		}
+		return domain.KioskState{}, domain.ErrNotFound
+	}
+	doc, err := one[domain.InductionDoc](ctx, s.db, `SELECT org_id, batch, pdf_path, sha256, sigex_id, allow_visitors,
+		instructor_signed_at, instructor_iin, instructor_name, instructor_cms, instructor_sign_id, created_at
+		FROM induction_docs WHERE org_id=$1 AND batch=$2`, viewer.OrgID, batch)
+	if err != nil {
+		return domain.KioskState{}, err
+	}
+	state := domain.KioskState{Doc: doc}
+	err = s.db.QueryRow(ctx, `SELECT count(a.*)::int, count(a.signed_at)::int, coalesce(i.iin,''), coalesce(i.name,'')
+		FROM induction_assignments a LEFT JOIN users i ON i.id=a.instructor_id
+		WHERE a.org_id=$1 AND a.batch=$2 GROUP BY i.iin, i.name`, viewer.OrgID, batch).
+		Scan(&state.Total, &state.Signed, &state.InstructorIIN, &state.InstructorName)
+	state.InstructorPending = state.Signed == state.Total && doc.InstructorSignedAt == nil
+	return state, err
+}
+
+func (s *Store) CanSignBatch(ctx context.Context, viewer domain.User, batch, iin string) error {
+	state, err := s.KioskState(ctx, viewer, batch)
+	if err != nil {
+		return err
+	}
+	var assigned bool
+	err = s.db.QueryRow(ctx, `SELECT exists(SELECT 1 FROM induction_assignments a JOIN users u ON u.id = a.user_id
+		WHERE a.org_id=$1 AND a.batch=$2 AND u.iin=$3 AND a.signed_at IS NULL)`, viewer.OrgID, batch, iin).Scan(&assigned)
+	if err != nil {
+		return err
+	}
+	if assigned || (state.Signed < state.Total && state.Doc.AllowVisitors) ||
+		(state.Signed == state.Total && state.Doc.InstructorSignedAt == nil && state.InstructorIIN == iin) {
+		return nil
+	}
+	return domain.Invalid("ИИН подписанта не ожидается в этой партии")
+}
+
+func (s *Store) ApplyBatchEDS(ctx context.Context, viewer domain.User, batch string, sig domain.EDSSignature) error {
+	if ok, err := s.BatchExists(ctx, viewer, batch); err != nil || !ok {
+		if err != nil {
+			return err
+		}
+		return domain.ErrNotFound
+	}
+	return pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+		var allow bool
+		if err := tx.QueryRow(ctx, `SELECT allow_visitors FROM induction_docs WHERE org_id=$1 AND batch=$2 FOR UPDATE`, viewer.OrgID, batch).Scan(&allow); err != nil {
+			return notFound(err)
+		}
+		tag, err := tx.Exec(ctx, `UPDATE induction_assignments a SET signed_at=now(), iin=$3, signer_name=$4, cms=$5, sigex_sign_id=$6
+			FROM users u WHERE a.user_id=u.id AND a.org_id=$1 AND a.batch=$2 AND u.iin=$3 AND a.signed_at IS NULL`,
+			viewer.OrgID, batch, sig.IIN, sig.Name, sig.CMS, sig.SignID)
+		if err != nil {
+			return err
+		}
+		if tag.RowsAffected() == 1 {
+			_, err = tx.Exec(ctx, `UPDATE induction_docs SET sigex_id=$3 WHERE org_id=$1 AND batch=$2`, viewer.OrgID, batch, sig.SIGEXID)
+			return err
+		}
+		var unsigned int
+		if err := tx.QueryRow(ctx, `SELECT count(*) FROM induction_assignments WHERE org_id=$1 AND batch=$2 AND signed_at IS NULL`, viewer.OrgID, batch).Scan(&unsigned); err != nil {
+			return err
+		}
+		if unsigned > 0 && allow {
+			var userID int64
+			err := tx.QueryRow(ctx, `INSERT INTO users (org_id, iin, name, role, active) VALUES ($1,$2,$3,'visitor',false)
+				ON CONFLICT (org_id, iin) DO UPDATE SET name=excluded.name RETURNING id`, viewer.OrgID, sig.IIN, sig.Name).Scan(&userID)
+			if err != nil {
+				return err
+			}
+			_, err = tx.Exec(ctx, `INSERT INTO induction_assignments
+				(org_id, template_id, user_id, instructor_id, location_id, batch, reason, basis, work_type, docs, assigned_at, due_at,
+				signed_at, iin, signer_name, cms, sigex_sign_id)
+				SELECT org_id, template_id, $3, instructor_id, location_id, batch, reason, basis, work_type, docs, assigned_at, due_at,
+				now(), $4, $5, $6, $7 FROM induction_assignments WHERE org_id=$1 AND batch=$2 ORDER BY id LIMIT 1`,
+				viewer.OrgID, batch, userID, sig.IIN, sig.Name, sig.CMS, sig.SignID)
+			if err == nil {
+				_, err = tx.Exec(ctx, `UPDATE induction_docs SET sigex_id=$3 WHERE org_id=$1 AND batch=$2`, viewer.OrgID, batch, sig.SIGEXID)
+			}
+			return err
+		}
+		if unsigned > 0 {
+			return domain.Invalid("ИИН подписанта не назначен на этот инструктаж")
+		}
+		var instructorIIN string
+		err = tx.QueryRow(ctx, `SELECT coalesce(i.iin,'') FROM induction_assignments a LEFT JOIN users i ON i.id=a.instructor_id
+			WHERE a.org_id=$1 AND a.batch=$2 LIMIT 1`, viewer.OrgID, batch).Scan(&instructorIIN)
+		if err != nil {
+			return err
+		}
+		if instructorIIN != sig.IIN {
+			return domain.Invalid("Последним протокол подписывает инструктирующий")
+		}
+		tag, err = tx.Exec(ctx, `UPDATE induction_docs SET sigex_id=$3, instructor_signed_at=now(), instructor_iin=$4,
+			instructor_name=$5, instructor_cms=$6, instructor_sign_id=$7
+			WHERE org_id=$1 AND batch=$2 AND instructor_signed_at IS NULL`, viewer.OrgID, batch, sig.SIGEXID, sig.IIN, sig.Name, sig.CMS, sig.SignID)
+		if err == nil && tag.RowsAffected() == 0 {
+			return domain.Invalid("Инструктирующий уже подписал протокол")
+		}
+		return err
+	})
 }
 
 func (s *Store) BatchExists(ctx context.Context, viewer domain.User, batch string) (bool, error) {

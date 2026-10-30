@@ -35,6 +35,10 @@ func (s Local) Save(orgID int64, f domain.Upload, onlyType string) (string, erro
 	return fileURL(orgID, name), nil
 }
 
+func (s Local) Read(orgID int64, name string) ([]byte, error) {
+	return os.ReadFile(s.Path(orgID, name))
+}
+
 // Path — путь к файлу на диске; имя очищается от каталогов.
 func (s Local) Path(orgID int64, name string) string {
 	return filepath.Join(s.Dir, fmt.Sprint(orgID), filepath.Base(name))

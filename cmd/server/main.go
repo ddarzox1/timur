@@ -13,6 +13,8 @@ import (
 
 	"qauipsiz/internal/config"
 	httpdelivery "qauipsiz/internal/delivery/http"
+	pdfinfra "qauipsiz/internal/infra/pdf"
+	"qauipsiz/internal/infra/sigex"
 	"qauipsiz/internal/infra/sms"
 	"qauipsiz/internal/infra/storage"
 	"qauipsiz/internal/repository/postgres"
@@ -36,6 +38,9 @@ func run() error {
 	cfg := config.Load()
 	if err := cfg.Validate(); err != nil {
 		return err
+	}
+	if !cfg.SIGEX.Fake {
+		return errors.New("реальный SIGEX пока выключен: сначала подтвердите договор, mTLS и регистрацию первой подписи; используйте SIGEX_FAKE=1")
 	}
 	if cfg.FixedOTP != "" {
 		slog.Warn("⚠️ ТЕСТОВЫЙ РЕЖИМ: код входа у всех номеров одинаковый — не используйте в проде", "FIXED_OTP", cfg.FixedOTP)
@@ -77,6 +82,7 @@ func run() error {
 // fileStore — хранилище файлов: сохранение для usecase и отдача для HTTP.
 type fileStore interface {
 	hazard.Storage
+	induction.Storage
 	httpdelivery.FileServer
 }
 
@@ -100,7 +106,7 @@ func NewHandler(store *postgres.Store, files fileStore, filesOrigin string, cfg 
 	return httpdelivery.New(httpdelivery.Services{
 		Auth:       auth.New(store, sender, cfg.FixedOTP),
 		Hazards:    hazards,
-		Inductions: induction.New(store, store, files, sender, cfg.BaseURL),
+		Inductions: induction.New(store, store, files, sender, pdfinfra.Protocol{}, sigex.NewFake(), cfg.BaseURL),
 		Checklists: checklist.New(store, store, files, hazards),
 		People:     people.New(store, files),
 		Dashboard:  dashboard.New(store),

@@ -23,6 +23,7 @@ services:
       # Локальная разработка: демо-данные и вход по коду 1111. На проде — SEED=0 и FIXED_OTP пустой.
       SEED: ${SEED:-1}
       FIXED_OTP: ${FIXED_OTP:-1111}
+      SIGEX_FAKE: ${SIGEX_FAKE:-1}
       # Хранилище файлов: local (том uploads) или s3 (внешний S3; локальный S3 из профиля s3 — только через make up-s3).
       STORAGE: ${STORAGE:-local}
       S3_ENDPOINT: ${S3_ENDPOINT:-}

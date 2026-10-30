@@ -11,7 +11,6 @@
   th { font-weight: 600; text-align: center; }
   thead { display: table-header-group; }
   tr { page-break-inside: avoid; }
-  img { height: 28px; }
   .small { font-size: 9px; color: #333; }
   .noprint { position: fixed; top: 8px; right: 8px; }
   @media print { .noprint { display: none; } body { padding: 0; } }
@@ -34,8 +33,9 @@
   {{range $i, $r := .Rows}}<tr>
     <td>{{add $i 1}}</td><td>{{date $r.SignedAt}}</td><td>{{$r.UserName}}</td><td>{{with $r.BirthYear}}{{.}}{{end}}</td><td>{{$r.Position}}</td>
     {{if $.Workplace}}<td>{{kind $r.Kind}}<div class="small">{{$r.Title}}</div></td><td>{{$r.Reason}}</td><td>{{$r.WorkLocation}}{{with $r.Basis}}<div class="small">Основание: {{.}}</div>{{end}}{{with $r.WorkType}}<div class="small">Работы: {{.}}</div>{{end}}{{with $r.Docs}}<div class="small">Документы: {{.}}</div>{{end}}</td>{{else}}<td>{{$r.Department}}</td>{{end}}
-    <td>{{$r.Instructor}}{{with $r.InstructorPos}}, {{.}}{{end}}</td><td></td>
-    <td><img src="{{safeURL $r.Signature}}" alt=""><div class="small">{{datetime $r.SignedAt}}</div></td>
+    <td>{{$r.Instructor}}{{with $r.InstructorPos}}, {{.}}{{end}}</td>
+    <td><div class="small">{{$r.InstructorSignerName}}<br>{{maskIIN $r.InstructorSignerIIN}}<br>{{datetime $r.InstructorSignedAt}}</div></td>
+    <td><div class="small">{{$r.SignerName}}<br>{{maskIIN $r.SignerIIN}}<br>{{datetime $r.SignedAt}}<br>SIGEX {{$r.SIGEXID}}</div></td>
   </tr>{{end}}
   </tbody>
 </table>

@@ -37,7 +37,13 @@ var funcs = template.FuncMap{
 	"add":   func(a, b int) int { return a + b },
 	"money": money,
 	"phone": domain.FormatPhone,
-	"sub":   func(a, b int) int { return a - b },
+	"maskIIN": func(s string) string {
+		if len(s) != 12 {
+			return s
+		}
+		return "********" + s[8:]
+	},
+	"sub": func(a, b int) int { return a - b },
 	"deref": func(p *int64) int64 {
 		if p == nil {
 			return 0

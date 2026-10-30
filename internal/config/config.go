@@ -19,11 +19,17 @@ type Config struct {
 
 	Storage string // local — диск (UPLOADS_DIR), s3 — S3-совместимое хранилище
 	S3      S3
+	SIGEX   SIGEX
 }
 
 type S3 struct {
 	Endpoint, Region, Bucket, AccessKey, SecretKey string
 	UseSSL                                         bool
+}
+
+type SIGEX struct {
+	URL, Cert, Key string
+	Fake           bool
 }
 
 func Load() Config {
@@ -44,6 +50,12 @@ func Load() Config {
 			AccessKey: get("S3_ACCESS_KEY", ""),
 			SecretKey: get("S3_SECRET_KEY", ""),
 			UseSSL:    get("S3_USE_SSL", "1") == "1",
+		},
+		SIGEX: SIGEX{
+			URL:  get("SIGEX_URL", "https://sigex.kz"),
+			Cert: get("SIGEX_CERT", ""),
+			Key:  get("SIGEX_KEY", ""),
+			Fake: get("SIGEX_FAKE", "1") == "1",
 		},
 	}
 	if c.FixedOTP == "off" {

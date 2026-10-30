@@ -14,6 +14,10 @@ import (
 	"qauipsiz/internal/domain"
 )
 
+func testInductionDoc(org int64, batch string) domain.InductionDoc {
+	return domain.InductionDoc{OrgID: org, Batch: batch, PDFPath: "/files/test/protocol.pdf", SHA256: "test"}
+}
+
 // Интеграционные тесты: нужен Postgres (docker compose up -d db). Без базы — пропускаются.
 
 var ctx = context.Background()
@@ -138,7 +142,8 @@ func TestJournalAndExpiring(t *testing.T) {
 	}
 	due := time.Now().AddDate(0, 0, 3)
 	for _, kind := range []string{"intro", "repeat"} {
-		n, err := s.CreateAssignments(ctx, viewer, ids[kind], &hse, nil, "b-"+kind+fmt.Sprint(f.org), "", "", "", "", due, []int64{worker, 999999})
+		batch := "b-" + kind + fmt.Sprint(f.org)
+		n, err := s.CreateAssignments(ctx, viewer, ids[kind], &hse, nil, batch, "", "", "", "", due, []int64{worker, 999999}, testInductionDoc(f.org, batch))
 		must(t, err)
 		if n != 1 {
 			t.Fatalf("назначено %d — чужой id не должен попасть", n)
@@ -178,7 +183,8 @@ func TestJournalAndExpiring(t *testing.T) {
 	if exp, _ := s.ExpiringRepeats(ctx, viewer, 2); len(exp) != 0 {
 		t.Fatal("за 2 дня до срока ещё не предупреждаем")
 	}
-	_, err = s.CreateAssignments(ctx, viewer, ids["repeat"], &hse, nil, "renew"+fmt.Sprint(f.org), "", "", "", "", due, []int64{worker})
+	renewBatch := "renew" + fmt.Sprint(f.org)
+	_, err = s.CreateAssignments(ctx, viewer, ids["repeat"], &hse, nil, renewBatch, "", "", "", "", due, []int64{worker}, testInductionDoc(f.org, renewBatch))
 	must(t, err)
 	if exp, _ := s.ExpiringRepeats(ctx, viewer, 14); len(exp) != 0 {
 		t.Fatal("после назначения нового повторного предупреждение пропадает")
@@ -264,7 +270,7 @@ func TestRoleScopes(t *testing.T) {
 	must(t, s.SaveInductionTemplate(ctx, f.org, domain.InductionTemplate{Title: "T", Kind: "intro"}))
 	templates, _ := s.InductionTemplates(ctx, f.org)
 	batch := fmt.Sprintf("scope-%d", f.org)
-	_, err := s.CreateAssignments(ctx, hse, templates[0].ID, &instructorID, nil, batch, "", "", "", "", time.Now().AddDate(0, 0, 1), []int64{rootWorker, childWorker, otherWorker})
+	_, err := s.CreateAssignments(ctx, hse, templates[0].ID, &instructorID, nil, batch, "", "", "", "", time.Now().AddDate(0, 0, 1), []int64{rootWorker, childWorker, otherWorker}, testInductionDoc(f.org, batch))
 	must(t, err)
 	_, err = db.Exec(ctx, `UPDATE induction_assignments SET signed_at = now() WHERE batch = $1 AND org_id = $2`, batch, f.org)
 	must(t, err)
@@ -296,7 +302,7 @@ func TestAssignmentFieldsPersistence(t *testing.T) {
 	must(t, s.SaveInductionTemplate(ctx, f.org, domain.InductionTemplate{Title: "Огневые работы", Kind: "target"}))
 	templates, _ := s.InductionTemplates(ctx, f.org)
 	batch := fmt.Sprintf("fields-%d", f.org)
-	n, err := s.CreateAssignments(ctx, viewer, templates[0].ID, &hseID, &f.loc, batch, "", "Наряд №7", "Сварка", "ППР-12", time.Now(), []int64{worker})
+	n, err := s.CreateAssignments(ctx, viewer, templates[0].ID, &hseID, &f.loc, batch, "", "Наряд №7", "Сварка", "ППР-12", time.Now(), []int64{worker}, testInductionDoc(f.org, batch))
 	must(t, err)
 	if n != 1 {
 		t.Fatalf("создано назначений: %d", n)
@@ -346,12 +352,44 @@ func TestUnsignedInBatchIsolation(t *testing.T) {
 	for _, f := range []fixture{a, b} {
 		must(t, s.SaveInductionTemplate(ctx, f.org, domain.InductionTemplate{Title: "T", Kind: "intro"}))
 		ts, _ := s.InductionTemplates(ctx, f.org)
-		_, err := s.CreateAssignments(ctx, domain.User{OrgID: f.org, Role: domain.RoleHSE}, ts[0].ID, nil, nil, batch, "", "", "", "", time.Now(), []int64{f.user(domain.RoleWorker)})
+		_, err := s.CreateAssignments(ctx, domain.User{OrgID: f.org, Role: domain.RoleHSE}, ts[0].ID, nil, nil, batch, "", "", "", "", time.Now(), []int64{f.user(domain.RoleWorker)}, testInductionDoc(f.org, batch))
 		must(t, err)
 	}
 	ns, err := s.UnsignedInBatch(ctx, a.org, batch)
 	must(t, err)
 	if len(ns) != 1 {
 		t.Fatalf("напоминания ушли бы и в чужую организацию: %d", len(ns))
+	}
+}
+
+func TestBatchEDSOrder(t *testing.T) {
+	s, db := testStore(t)
+	f := newFixture(t, db)
+	worker, instructor := f.user(domain.RoleWorker), f.user(domain.RoleInstructor)
+	_, err := db.Exec(ctx, `UPDATE users SET iin=CASE id WHEN $1 THEN '900101300017' ELSE '900101300027' END WHERE id=ANY($2)`,
+		worker, []int64{worker, instructor})
+	must(t, err)
+	must(t, s.SaveInductionTemplate(ctx, f.org, domain.InductionTemplate{Title: "ЭЦП", Kind: "intro"}))
+	templates, _ := s.InductionTemplates(ctx, f.org)
+	batch := fmt.Sprintf("eds-%d", f.org)
+	viewer := domain.User{ID: instructor, OrgID: f.org, Role: domain.RoleHSE}
+	_, err = s.CreateAssignments(ctx, viewer, templates[0].ID, &instructor, nil, batch, "", "", "", "", time.Now(),
+		[]int64{worker}, testInductionDoc(f.org, batch))
+	must(t, err)
+
+	tooEarly := domain.EDSSignature{IIN: "900101300027", Name: "Инструктор", CMS: "cms-i", SIGEXID: "doc", SignID: 1}
+	if err := s.ApplyBatchEDS(ctx, viewer, batch, tooEarly); err == nil {
+		t.Fatal("инструктор не должен подписывать раньше участника")
+	}
+	workerSig := domain.EDSSignature{IIN: "900101300017", Name: "Работник", CMS: "cms-w", SIGEXID: "doc", SignID: 1}
+	must(t, s.CanSignBatch(ctx, viewer, batch, workerSig.IIN))
+	must(t, s.ApplyBatchEDS(ctx, viewer, batch, workerSig))
+	must(t, s.CanSignBatch(ctx, viewer, batch, tooEarly.IIN))
+	tooEarly.SignID = 2
+	must(t, s.ApplyBatchEDS(ctx, viewer, batch, tooEarly))
+	state, err := s.KioskState(ctx, viewer, batch)
+	must(t, err)
+	if state.Signed != 1 || state.Total != 1 || state.Doc.InstructorSignedAt == nil || state.Doc.SIGEXID != "doc" {
+		t.Fatalf("неверное состояние ЭЦП: %+v", state)
 	}
 }
