@@ -67,3 +67,8 @@ func (s *Store) DeleteSession(ctx context.Context, tokenHash string) error {
 	_, err := s.db.Exec(ctx, `DELETE FROM sessions WHERE token_hash = $1`, tokenHash)
 	return err
 }
+
+func (s *Store) TouchLastSeen(ctx context.Context, userID int64, before time.Time) error {
+	_, err := s.db.Exec(ctx, `UPDATE users SET last_seen_at=now() WHERE id=$1 AND (last_seen_at IS NULL OR last_seen_at < $2)`, userID, before)
+	return err
+}

@@ -7,6 +7,94 @@ import (
 	"qauipsiz/internal/usecase/dashboard"
 )
 
+const dashboardSessionsCTE = `WITH scoped_sessions AS (
+	SELECT a.batch, min(t.title) AS title, min(t.kind) AS kind, min(a.assigned_at) AS assigned_at,
+		max(a.due_at)::timestamptz AS due_at, count(*)::int AS total, count(a.signed_at)::int AS signed,
+		max(ed.instructor_signed_at) AS instructor_signed_at,
+		string_agg(DISTINCT coalesce(d.name, 'Без подразделения'), ', ') AS department
+	FROM induction_assignments a
+	JOIN induction_templates t ON t.id=a.template_id
+	JOIN users u ON u.id=a.user_id
+	LEFT JOIN departments d ON d.id=u.department_id
+	LEFT JOIN induction_docs ed ON ed.org_id=a.org_id AND ed.batch=a.batch
+	WHERE a.org_id=$1 AND ($2::bigint[] IS NULL OR u.department_id=ANY($2) OR ($3='instructor' AND a.instructor_id=$4))
+	GROUP BY a.batch
+) `
+
+func (s *Store) InstructionKPI(ctx context.Context, viewer domain.User) (dashboard.KPI, error) {
+	deps, err := s.scopeDepts(ctx, viewer)
+	if err != nil {
+		return dashboard.KPI{}, err
+	}
+	var k dashboard.KPI
+	err = s.db.QueryRow(ctx, dashboardSessionsCTE+`SELECT
+		count(*) FILTER (WHERE assigned_at >= date_trunc('month', now()))::int,
+		count(*) FILTER (WHERE assigned_at >= date_trunc('month', now())-interval '1 month' AND assigned_at < date_trunc('month', now()))::int,
+		count(*) FILTER (WHERE assigned_at >= date_trunc('month', now()) AND instructor_signed_at IS NOT NULL)::int,
+		count(*) FILTER (WHERE assigned_at >= date_trunc('month', now()) AND signed < total)::int,
+		count(*) FILTER (WHERE assigned_at >= date_trunc('month', now()) AND signed=total AND instructor_signed_at IS NULL)::int,
+		count(*) FILTER (WHERE assigned_at >= date_trunc('month', now()) AND due_at < current_date AND instructor_signed_at IS NULL)::int
+		FROM scoped_sessions`, viewer.OrgID, deps, viewer.Role, viewer.ID).
+		Scan(&k.Total, &k.Previous, &k.Completed, &k.WaitingWorkers, &k.WaitingInstructor, &k.Overdue)
+	return k, err
+}
+
+func (s *Store) InstructionDynamics(ctx context.Context, viewer domain.User) ([]domain.Bar, error) {
+	deps, err := s.scopeDepts(ctx, viewer)
+	if err != nil {
+		return nil, err
+	}
+	return list[domain.Bar](ctx, s.db, dashboardSessionsCTE+`, months AS (
+		SELECT generate_series(date_trunc('month', now())-interval '5 months', date_trunc('month', now()), interval '1 month') m
+	) SELECT to_char(m.m, 'Mon') AS label, count(x.batch)::int AS a,
+		count(x.batch) FILTER (WHERE x.instructor_signed_at IS NOT NULL)::int AS b
+		FROM months m LEFT JOIN scoped_sessions x ON x.assigned_at >= m.m AND x.assigned_at < m.m+interval '1 month'
+		GROUP BY m.m ORDER BY m.m`, viewer.OrgID, deps, viewer.Role, viewer.ID)
+}
+
+func (s *Store) InstructionDepartments(ctx context.Context, viewer domain.User) ([]domain.Bar, error) {
+	deps, err := s.scopeDepts(ctx, viewer)
+	if err != nil {
+		return nil, err
+	}
+	return list[domain.Bar](ctx, s.db, `SELECT coalesce(d.name,'Без подразделения') AS label, count(*)::int AS a,
+		count(a.signed_at)::int AS b FROM induction_assignments a JOIN users u ON u.id=a.user_id
+		LEFT JOIN departments d ON d.id=u.department_id
+		WHERE a.org_id=$1 AND a.assigned_at >= date_trunc('month',now())
+		AND ($2::bigint[] IS NULL OR u.department_id=ANY($2) OR ($3='instructor' AND a.instructor_id=$4))
+		GROUP BY d.name ORDER BY a DESC`, viewer.OrgID, deps, viewer.Role, viewer.ID)
+}
+
+func (s *Store) RecentSessions(ctx context.Context, viewer domain.User, limit int) ([]dashboard.Session, error) {
+	deps, err := s.scopeDepts(ctx, viewer)
+	if err != nil {
+		return nil, err
+	}
+	return list[dashboard.Session](ctx, s.db, dashboardSessionsCTE+`SELECT * FROM scoped_sessions ORDER BY assigned_at DESC LIMIT $5`,
+		viewer.OrgID, deps, viewer.Role, viewer.ID, limit)
+}
+
+func (s *Store) UpcomingSessions(ctx context.Context, viewer domain.User, limit int) ([]dashboard.Session, error) {
+	deps, err := s.scopeDepts(ctx, viewer)
+	if err != nil {
+		return nil, err
+	}
+	return list[dashboard.Session](ctx, s.db, dashboardSessionsCTE+`SELECT * FROM scoped_sessions
+		WHERE instructor_signed_at IS NULL AND due_at >= current_date ORDER BY due_at LIMIT $5`,
+		viewer.OrgID, deps, viewer.Role, viewer.ID, limit)
+}
+
+func (s *Store) UserActivity(ctx context.Context, viewer domain.User, limit int) ([]dashboard.Activity, error) {
+	deps, err := s.scopeDepts(ctx, viewer)
+	if err != nil {
+		return nil, err
+	}
+	return list[dashboard.Activity](ctx, s.db, `SELECT u.id, u.name, u.role, coalesce(d.name,'Без подразделения') AS department, u.last_seen_at
+		FROM users u LEFT JOIN departments d ON d.id=u.department_id
+		WHERE u.org_id=$1 AND u.role<>'visitor' AND ($2::bigint[] IS NULL OR u.department_id=ANY($2))
+		ORDER BY u.last_seen_at DESC NULLS LAST, u.name LIMIT $3`, viewer.OrgID, deps, limit)
+}
+
 func (s *Store) DashboardCounts(ctx context.Context, viewer domain.User, days int) (dashboard.Counts, error) {
 	deps, err := s.scopeDepts(ctx, viewer)
 	if err != nil {

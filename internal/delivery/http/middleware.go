@@ -49,6 +49,9 @@ func (h *Handler) withUser(f hf, roles ...string) http.Handler {
 			http.Error(w, "Нет доступа", http.StatusForbidden)
 			return
 		}
+		if err := h.auth.TouchLastSeen(r.Context(), *u); err != nil {
+			slog.Warn("last_seen", "user", u.ID, "err", err)
+		}
 		serve(w, r.WithContext(context.WithValue(r.Context(), ctxKey{}, u)), *u, f)
 	})
 }
@@ -59,6 +62,9 @@ func (h *Handler) public(f hf) http.Handler {
 		var u domain.User
 		if p := h.sessionUser(r); p != nil {
 			u = *p
+			if err := h.auth.TouchLastSeen(r.Context(), u); err != nil {
+				slog.Warn("last_seen", "user", u.ID, "err", err)
+			}
 			r = r.WithContext(context.WithValue(r.Context(), ctxKey{}, p))
 		}
 		serve(w, r, u, f)

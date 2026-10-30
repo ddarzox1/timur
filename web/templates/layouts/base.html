@@ -23,19 +23,18 @@
   <label for="nav" class="nav-shade" aria-hidden="true"></label>
   <nav class="side" id="side">
     <a class="logo" href="/admin"><span class="logo-mark">{{template "i" "shield"}}</span><span class="logo-t">Qauipsiz</span></a>
-    <a href="/admin" {{if eq .Path "/admin"}}class="on"{{end}}>{{template "i" "dashboard"}}{{t "Дашборд"}}</a>
-    <a href="/admin/hazards" {{if eq .Path "/admin/hazards"}}class="on"{{end}}>{{template "i" "hazard"}}{{t "Опасности"}}</a>
-    <div class="group">{{t "Инструктажи"}}</div>
-    <a href="/admin/inductions" {{if eq .Path "/admin/inductions"}}class="on"{{end}}>{{template "i" "induction"}}{{t "Шаблоны"}}</a>
-    <a href="/admin/assignments" {{if eq .Path "/admin/assignments"}}class="on"{{end}}>{{template "i" "assign"}}{{t "Назначения"}}</a>
-    <a href="/admin/journals" {{if eq .Path "/admin/journals"}}class="on"{{end}}>{{template "i" "journal"}}{{t "Журналы"}}</a>
-    <div class="group">{{t "Чек-листы"}}</div>
-    <a href="/admin/checklists" {{if eq .Path "/admin/checklists"}}class="on"{{end}}>{{template "i" "checklist"}}{{t "Шаблоны"}}</a>
-    <a href="/admin/runs" {{if eq .Path "/admin/runs"}}class="on"{{end}}>{{template "i" "file"}}{{t "Результаты"}}</a>
-    <div class="group">&nbsp;</div>
+    <a href="/admin" {{if eq .Path "/admin"}}class="on"{{end}}>{{template "i" "dashboard"}}{{t "Главная"}}</a>
+    <a href="/admin/assignments" {{if or (eq .Path "/admin/assignments") (eq .Path "/admin/assign")}}class="on"{{end}}>{{template "i" "induction"}}{{t "Инструктажи"}}</a>
+    <a class="sub" href="/admin/inductions">{{t "Шаблоны инструктажей"}}</a>
+    <a href="/admin/journals" {{if eq .Path "/admin/journals"}}class="on"{{end}}>{{template "i" "journal"}}{{t "Журнал"}}</a>
     <a href="/admin/people" {{if eq .Path "/admin/people"}}class="on"{{end}}>{{template "i" "users"}}{{t "Сотрудники"}}</a>
-    <a href="/admin/org" {{if eq .Path "/admin/org"}}class="on"{{end}}>{{template "i" "org"}}{{t "Оргструктура"}}</a>
+    <a href="/admin/journals/print" target="_blank" hx-boost="false">{{template "i" "file"}}{{t "Отчёты"}}</a>
+    <a href="/admin/org" {{if eq .Path "/admin/org"}}class="on"{{end}}>{{template "i" "org"}}{{t "Справочники"}}</a>
     {{if eq .Me.Role "admin"}}<a href="/admin/settings" {{if eq .Path "/admin/settings"}}class="on"{{end}}>{{template "i" "settings"}}{{t "Настройки"}}</a>{{end}}
+    <div class="group">{{t "Безопасность"}}</div>
+    <a href="/admin/hazards" {{if eq .Path "/admin/hazards"}}class="on"{{end}}>{{template "i" "hazard"}}{{t "Опасности"}}</a>
+    <a href="/admin/checklists" {{if eq .Path "/admin/checklists"}}class="on"{{end}}>{{template "i" "checklist"}}{{t "Чек-листы"}}</a>
+    <a href="/admin/runs" {{if eq .Path "/admin/runs"}}class="on"{{end}}>{{template "i" "file"}}{{t "Результаты"}}</a>
     <a href="/m">{{template "i" "phone"}}{{t "Мобильная версия"}}</a>
   </nav>
   <div>

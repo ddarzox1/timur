@@ -56,8 +56,14 @@ var funcs = template.FuncMap{
 	"cats":      func() []domain.Category { return domain.Categories },
 	"kinds":     func() []string { return domain.KindOrder },
 	"hasSuffix": strings.HasSuffix,
-	"ints":      func(xs ...int) []int { return xs },
-	"strs":      func(xs ...string) []string { return xs },
+	"initial": func(s string) string {
+		for _, r := range s {
+			return string(r)
+		}
+		return "?"
+	},
+	"ints": func(xs ...int) []int { return xs },
+	"strs": func(xs ...string) []string { return xs },
 }
 
 func init() {

@@ -10,35 +10,36 @@ import (
 
 type memRepo struct {
 	Repo
-	period int
-	warn   int
+	warn int
 }
 
 func (m *memRepo) Org(context.Context, int64) (domain.Org, error) {
 	return domain.Org{RepeatWarnDays: 21, CreatedAt: time.Date(2026, 10, 6, 8, 0, 0, 0, time.UTC)}, nil
 }
-func (m *memRepo) DashboardCounts(_ context.Context, _ domain.User, p int) (Counts, error) {
-	m.period = p
-	return Counts{OpenHazards: 3}, nil
+func (m *memRepo) InstructionKPI(context.Context, domain.User) (KPI, error) {
+	return KPI{Total: 10, Previous: 8, Completed: 6, WaitingWorkers: 3, WaitingInstructor: 1}, nil
 }
-func (m *memRepo) HazardsByWeek(context.Context, domain.User) ([]domain.Bar, error) {
-	return []domain.Bar{{A: 2, B: 7}, {A: 4, B: 1}}, nil
+func (m *memRepo) InstructionDynamics(context.Context, domain.User) ([]domain.Bar, error) {
+	return []domain.Bar{{Label: "Sep", A: 2, B: 1}, {Label: "Oct", A: 7, B: 4}}, nil
 }
-func (m *memRepo) HazardsByCategory(context.Context, domain.User, int) ([]domain.Bar, error) {
-	return []domain.Bar{{A: 5}}, nil
+func (m *memRepo) InstructionDepartments(context.Context, domain.User) ([]domain.Bar, error) {
+	return []domain.Bar{{Label: "Цех", A: 5, B: 4}}, nil
 }
-func (m *memRepo) SignaturesByDepartment(context.Context, domain.User, int) ([]domain.Bar, error) {
-	return nil, nil
+func (m *memRepo) RecentSessions(context.Context, domain.User, int) ([]Session, error) {
+	return []Session{{Batch: "b", Title: "Высота", Total: 2, Signed: 2}}, nil
 }
-func (m *memRepo) OverdueHazards(context.Context, domain.User, int) ([]domain.Hazard, error) {
-	return nil, nil
+func (m *memRepo) UpcomingSessions(context.Context, domain.User, int) ([]Session, error) {
+	return []Session{{Batch: "c", Total: 2, Signed: 1}}, nil
+}
+func (m *memRepo) UserActivity(context.Context, domain.User, int) ([]Activity, error) {
+	return []Activity{{ID: 1, Name: "Айгерим"}}, nil
 }
 func (m *memRepo) OverdueAssignments(context.Context, domain.User, int) ([]domain.Assignment, error) {
-	return nil, nil
+	return []domain.Assignment{{Batch: "late", UserName: "Ерлан", Title: "Высота"}}, nil
 }
 func (m *memRepo) ExpiringRepeats(_ context.Context, _ domain.User, days int) ([]domain.Expiring, error) {
 	m.warn = days
-	return nil, nil
+	return []domain.Expiring{{UserName: "Данияр", Title: "Повторный", Template: 3}}, nil
 }
 
 func TestStats(t *testing.T) {
@@ -51,13 +52,10 @@ func TestStats(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if repo.period != 90 || st.Period != 90 {
-		t.Fatalf("неизвестный период → 90, получили %d", repo.period)
-	}
 	if repo.warn != 21 {
 		t.Fatal("порог предупреждения берётся из настроек организации")
 	}
-	if st.MaxWeek != 7 || st.MaxCategory != 5 || st.DaysWithoutInjury != 10 || st.OpenHazards != 3 {
+	if st.KPI.ChangePct() != 25 || st.KPI.Completed != 6 || len(st.Dynamics) != 2 || len(st.Recent) != 1 || len(st.Notifications) != 3 || st.LineTotal == "" || st.LineCompleted == "" {
 		t.Fatalf("%+v", st)
 	}
 	for _, p := range Periods {

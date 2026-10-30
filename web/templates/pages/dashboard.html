@@ -1,59 +1,55 @@
 {{define "page"}}{{template "admin" .}}{{end}}
-{{define "title"}}{{t "Дашборд"}}{{end}}
+{{define "title"}}Главная{{end}}
 {{define "content"}}
-<div class="row between">
-  <h1>{{t "Дашборд"}}</h1>
-  <div class="row small">
-    {{range $p := ints 30 90 365}}<a class="btn {{if eq $p $.Period}}primary{{end}}" href="/admin?period={{$p}}">{{$p}} дн.</a>{{end}}
-  </div>
-</div>
-<div class="grid kpi">
-  <div class="card"><div class="num" style="color:var(--ok)">{{.Days}}</div><div class="lbl">Дней без травм</div></div>
-  <a class="card" href="/admin/hazards?status=active" style="color:inherit;text-decoration:none"><div class="num">{{.OpenH}}</div><div class="lbl">Открытых опасностей{{if .OverdueH}} · <span class="badge danger">{{.OverdueH}} просрочено</span>{{end}}</div></a>
-  <a class="card" href="/admin/assignments" style="color:inherit;text-decoration:none"><div class="num">{{pct .SignedA .TotalA}}%</div><div class="lbl">Инструктажей подписано ({{.SignedA}} из {{.TotalA}})</div></a>
-  <div class="card"><div class="num" {{if .Expiring}}style="color:var(--warn)"{{end}}>{{len .Expiring}}</div><div class="lbl">Истекает повторный инструктаж (≤{{.O.RepeatWarnDays}} дн.)</div></div>
-  <a class="card" href="/admin/runs" style="color:inherit;text-decoration:none"><div class="num">{{.Runs7}}</div><div class="lbl">Осмотров за неделю</div></a>
+<div class="dash-head">
+  <div><p class="eyebrow">{{.S.Org.Name}}</p><h1>Инструктажи</h1><p class="muted">Сводка за текущий месяц</p></div>
+  <div class="dash-actions"><a class="btn" href="/admin/journals">Открыть журнал</a><a class="btn accent" href="/admin/assign">＋ Назначить инструктаж</a></div>
 </div>
 
-<div class="grid cols" style="margin-top:1rem">
-  <div class="card">
-    <div class="row between"><h3>Опасности по неделям</h3>
-      <span class="legend"><span><i style="background:var(--warn-solid)"></i>созданы</span><span><i style="background:var(--brand)"></i>устранены</span></span></div>
-    <div class="bars" role="img" aria-label="Опасности по неделям">
-      {{range .Weeks}}<div class="col" title="{{.Label}}: создано {{.A}}, устранено {{.B}}">
-        <div class="pair"><div class="b a" style="height:{{pct .A $.MaxW}}%"></div><div class="b f" style="height:{{pct .B $.MaxW}}%"></div></div>
-        <span class="small muted">{{.Label}}</span></div>{{end}}
-    </div>
-  </div>
-  <div class="card">
-    <h3>Опасности по категориям</h3>
-    {{range .Cats}}<div class="hbar"><span>{{cat .Label}}</span><div class="track"><div class="fill" style="width:{{pct .A $.MaxC}}%"></div></div><b>{{.A}}</b></div>
-    {{else}}<p class="muted">Нет данных за период</p>{{end}}
-  </div>
-  <div class="card">
-    <h3>Подписи инструктажей по подразделениям</h3>
-    {{range .Deps}}<div class="hbar"><span>{{.Label}}</span><div class="track"><div class="fill" style="width:{{pct .B .A}}%;background:var(--ok)"></div></div><b>{{pct .B .A}}%</b></div>
-    {{else}}<p class="muted">Нет назначений за период</p>{{end}}
-  </div>
+<div class="dash-kpis">
+  <a class="dash-kpi" href="/admin/assignments"><span class="kpi-icon blue">{{template "i" "assign"}}</span><span><b>{{.K.Total}}</b><small>Всего проведений</small><em class="{{if lt .K.ChangePct 0}}down{{else}}up{{end}}">{{if ge .K.ChangePct 0}}+{{end}}{{.K.ChangePct}}% к прошлому месяцу</em></span></a>
+  <a class="dash-kpi" href="/admin/assignments"><span class="kpi-icon green">{{template "i" "check"}}</span><span><b>{{.K.Completed}}</b><small>Завершено</small><em>{{pct .K.Completed .K.Total}}% от всех</em></span></a>
+  <a class="dash-kpi" href="/admin/assignments"><span class="kpi-icon amber">{{template "i" "users"}}</span><span><b>{{.K.WaitingWorkers}}</b><small>Ждут работников</small><em>нужны подписи ЭЦП</em></span></a>
+  <a class="dash-kpi" href="/admin/assignments"><span class="kpi-icon violet">{{template "i" "induction"}}</span><span><b>{{.K.WaitingInstructor}}</b><small>Ждут инструктора</small><em>работники подписали</em></span></a>
+  <a class="dash-kpi {{if .K.Overdue}}alert{{end}}" href="/admin/assignments"><span class="kpi-icon red">{{template "i" "hazard"}}</span><span><b>{{.K.Overdue}}</b><small>Просрочено</small><em>требует внимания</em></span></a>
 </div>
 
-<h2>Требует внимания</h2>
-<div class="table-wrap"><table class="rtable">
-  <thead><tr><th>Что</th><th>Кто</th><th>Срок</th><th></th></tr></thead>
-  <tbody>
-  {{range .OverdueHz}}<tr>
-    <td><a href="/admin/hazards/{{.ID}}">№{{.ID}} {{cat .Category}}</a> · <span class="muted">{{.Location}}</span></td>
-    <td>{{or .Responsible "не назначен"}}</td><td><span class="badge danger">{{date .DueAt}}</span></td>
-    <td><a class="btn" href="/admin/hazards/{{.ID}}">Открыть</a></td></tr>{{end}}
-  {{range .OverdueAs}}<tr>
-    <td>{{.Title}} <span class="badge info">{{kind .Kind}}</span></td>
-    <td>{{.UserName}}</td><td><span class="badge danger">{{date .DueAt}}</span></td>
-    <td><form hx-post="/admin/assignments/{{.Batch}}/remind" hx-swap="outerHTML"><button class="btn">Напомнить</button></form></td></tr>{{end}}
-  {{range .Expiring}}<tr>
-    <td>Повторный: {{.Title}}</td><td>{{.UserName}}</td>
-    <td><span class="badge {{if overdue .NextDue}}danger{{else}}warn{{end}}">{{date .NextDue}}</span></td>
-    <td><a class="btn" href="/admin/assign?template={{.Template}}&q={{.UserName}}">Назначить</a></td></tr>{{end}}
-  {{if not (or .OverdueHz .OverdueAs .Expiring)}}<tr><td colspan="4" class="muted">Всё в порядке ✓</td></tr>{{end}}
-  </tbody>
-</table></div>
+<div class="dash-grid chart-row">
+  <section class="card dash-chart">
+    <div class="row between"><div><h2>Динамика проведений</h2><p class="muted small">Последние 6 месяцев</p></div><div class="legend"><span class="line-total">всего</span><span class="line-done">завершено</span></div></div>
+    <svg viewBox="0 0 100 104" preserveAspectRatio="none" role="img" aria-label="Динамика инструктажей">
+      <g class="chart-grid"><line x1="0" y1="18" x2="100" y2="18"/><line x1="0" y1="53" x2="100" y2="53"/><line x1="0" y1="88" x2="100" y2="88"/></g>
+      <polyline class="total" points="{{.LineTotal}}"/><polyline class="completed" points="{{.LineCompleted}}"/>
+    </svg>
+    <div class="chart-labels">{{range .Dynamics}}<span>{{.Label}}</span>{{end}}</div>
+  </section>
+  <section class="card completion-card">
+    <h2>Статус месяца</h2>
+    <div class="donut-wrap"><svg viewBox="0 0 42 42"><circle class="donut-bg" cx="21" cy="21" r="15.9"/><circle class="donut-value" cx="21" cy="21" r="15.9" stroke-dasharray="{{pct .K.Completed .K.Total}} {{sub 100 (pct .K.Completed .K.Total)}}"/></svg><div><b>{{pct .K.Completed .K.Total}}%</b><span>завершено</span></div></div>
+    <div class="status-legend"><span><i class="ok"></i>Завершено <b>{{.K.Completed}}</b></span><span><i class="workers"></i>Ждут работников <b>{{.K.WaitingWorkers}}</b></span><span><i class="instructor"></i>Ждут инструктора <b>{{.K.WaitingInstructor}}</b></span></div>
+  </section>
+</div>
+
+<div class="dash-grid middle-row">
+  <section class="card"><div class="row between"><div><h2>По подразделениям</h2><p class="muted small">Подписи работников за месяц</p></div><a href="/admin/people" class="small">Все сотрудники →</a></div>
+    {{range .Deps}}<div class="dept-progress"><div><span>{{.Label}}</span><b>{{.B}} / {{.A}}</b></div><div class="track"><i style="width:{{pct .B .A}}%"></i></div></div>{{else}}<p class="muted">За месяц назначений нет.</p>{{end}}
+  </section>
+  <section class="card notification-feed"><div class="row between"><div><h2>Уведомления</h2><p class="muted small">Сформированы автоматически</p></div><span class="count">{{len .Notifications}}</span></div>
+    {{range .Notifications}}<a href="{{.Href}}" class="notice {{.Kind}}"><i></i><span>{{.Text}}</span><b>→</b></a>{{else}}<div class="empty compact">Всё в порядке — новых уведомлений нет.</div>{{end}}
+  </section>
+</div>
+
+<section class="card recent-sessions">
+  <div class="row between"><div><h2>Последние проведения</h2><p class="muted small">Новые и недавно подписанные протоколы</p></div><a class="btn" href="/admin/assignments">Все проведения</a></div>
+  <div class="table-wrap"><table class="rtable"><thead><tr><th>Инструктаж</th><th>Подразделения</th><th>Дата</th><th>Участники</th><th>Статус</th><th></th></tr></thead><tbody>
+    {{range .Recent}}<tr><td data-label="Инструктаж"><b>{{.Title}}</b><div class="small muted">{{kind .Kind}}</div></td><td data-label="Подразделения">{{.Department}}</td><td data-label="Дата">{{date .AssignedAt}}</td><td data-label="Участники">{{.Signed}} / {{.Total}}</td><td data-label="Статус">{{if eq .Status "completed"}}<span class="badge ok">Завершено</span>{{else if eq .Status "instructor"}}<span class="badge info">Ждёт инструктора</span>{{else}}<span class="badge warn">Ждёт работников</span>{{end}}</td><td><a class="btn" href="/admin/sessions/{{.Batch}}/kiosk">Открыть</a></td></tr>
+    {{else}}<tr><td colspan="6" class="muted">Проведений пока нет.</td></tr>{{end}}
+  </tbody></table></div>
+</section>
+
+<div class="dash-grid bottom-row">
+  <section class="card"><h2>Ближайшие сроки</h2>{{range .Upcoming}}<a class="deadline" href="/admin/sessions/{{.Batch}}/kiosk"><time>{{date .DueAt}}</time><span><b>{{.Title}}</b><small>{{.Signed}} из {{.Total}} подписали</small></span><strong>→</strong></a>{{else}}<p class="muted">Нет незавершённых проведений.</p>{{end}}</section>
+  <section class="card"><h2>Активность пользователей</h2>{{range .Activity}}<div class="user-activity"><span class="avatar">{{initial .Name}}</span><span><b>{{.Name}}</b><small>{{role .Role}} · {{.Department}}</small></span><time>{{if .LastSeenAt}}{{datetime .LastSeenAt}}{{else}}не входил(а){{end}}</time></div>{{end}}</section>
+  <section class="card quick-actions"><h2>Быстрые действия</h2><a href="/admin/assign">{{template "i" "assign"}}<span><b>Назначить инструктаж</b><small>Создать новое проведение</small></span>→</a><a href="/admin/people/new">{{template "i" "users"}}<span><b>Добавить сотрудника</b><small>ИИН, роль и подразделение</small></span>→</a><a href="/admin/journals.csv" hx-boost="false">{{template "i" "file"}}<span><b>Скачать отчёт</b><small>Журнал в формате CSV</small></span>→</a></section>
+</div>
 {{end}}

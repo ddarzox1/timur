@@ -44,6 +44,7 @@ type Repo interface {
 	CreateSession(ctx context.Context, phone, tokenHash string, expires time.Time) (domain.User, error)
 	SessionUser(ctx context.Context, tokenHash string, now time.Time) (domain.User, error)
 	DeleteSession(ctx context.Context, tokenHash string) error
+	TouchLastSeen(ctx context.Context, userID int64, before time.Time) error
 }
 
 type SMSSender interface {
@@ -66,6 +67,14 @@ func New(repo Repo, sms SMSSender, fixedCode string) *Service {
 func (s *Service) WithClock(now func() time.Time) *Service { s.now = now; return s }
 
 func (s *Service) FixedCode() string { return s.fixedCode }
+
+func (s *Service) TouchLastSeen(ctx context.Context, u domain.User) error {
+	now := s.now()
+	if u.LastSeenAt != nil && now.Sub(*u.LastSeenAt) < 5*time.Minute {
+		return nil
+	}
+	return s.repo.TouchLastSeen(ctx, u.ID, now.Add(-5*time.Minute))
+}
 
 // CodeRequest — результат запроса кода: нормализованный номер и сколько секунд ждать до повторной отправки.
 type CodeRequest struct {

@@ -13,10 +13,9 @@ func (h *Handler) adminDashboard(w http.ResponseWriter, r *http.Request, u domai
 	if err != nil {
 		return err
 	}
-	return render(w, r, "dashboard", map[string]any{"O": st.Org, "Days": st.DaysWithoutInjury,
-		"OpenH": st.OpenHazards, "OverdueH": st.OverdueHazards, "TotalA": st.Assigned, "SignedA": st.Signed, "Runs7": st.RunsWeek,
-		"Expiring": st.Expiring, "Weeks": st.Weeks, "MaxW": st.MaxWeek, "Cats": st.Categories, "MaxC": st.MaxCategory,
-		"Deps": st.Departments, "OverdueHz": st.OverdueHazardList, "OverdueAs": st.OverdueAssignments, "Period": st.Period})
+	return render(w, r, "dashboard", map[string]any{"S": st, "K": st.KPI, "Dynamics": st.Dynamics,
+		"Deps": st.Departments, "Recent": st.Recent, "Upcoming": st.Upcoming, "Activity": st.Activity,
+		"Notifications": st.Notifications, "LineTotal": st.LineTotal, "LineCompleted": st.LineCompleted})
 }
 
 func (h *Handler) mHome(w http.ResponseWriter, r *http.Request, u domain.User) error {

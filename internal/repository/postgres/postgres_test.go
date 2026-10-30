@@ -288,6 +288,20 @@ func TestRoleScopes(t *testing.T) {
 		if len(batches) != 1 || batches[0].Total != tc.want {
 			t.Errorf("%s batches = %+v, want total %d", name, batches, tc.want)
 		}
+		kpi, err := s.InstructionKPI(ctx, tc.viewer)
+		must(t, err)
+		if kpi.Total != 1 || kpi.WaitingInstructor != 1 {
+			t.Errorf("%s dashboard KPI = %+v", name, kpi)
+		}
+		deps, err := s.InstructionDepartments(ctx, tc.viewer)
+		must(t, err)
+		total := 0
+		for _, d := range deps {
+			total += d.A
+		}
+		if total != tc.want {
+			t.Errorf("%s dashboard department assignments = %d, want %d", name, total, tc.want)
+		}
 	}
 }
 
@@ -391,5 +405,45 @@ func TestBatchEDSOrder(t *testing.T) {
 	must(t, err)
 	if state.Signed != 1 || state.Total != 1 || state.Doc.InstructorSignedAt == nil || state.Doc.SIGEXID != "doc" {
 		t.Fatalf("неверное состояние ЭЦП: %+v", state)
+	}
+}
+
+func TestBatchEDSVisitorPermission(t *testing.T) {
+	s, db := testStore(t)
+	f := newFixture(t, db)
+	worker, instructor := f.user(domain.RoleWorker), f.user(domain.RoleInstructor)
+	_, err := db.Exec(ctx, `UPDATE users SET iin=CASE id WHEN $1 THEN '900101300017' ELSE '900101300027' END WHERE id=ANY($2)`,
+		worker, []int64{worker, instructor})
+	must(t, err)
+	must(t, s.SaveInductionTemplate(ctx, f.org, domain.InductionTemplate{Title: "Посетители", Kind: "intro"}))
+	templates, _ := s.InductionTemplates(ctx, f.org)
+	viewer := domain.User{ID: instructor, OrgID: f.org, Role: domain.RoleHSE}
+
+	allowed := fmt.Sprintf("visitor-ok-%d", f.org)
+	doc := testInductionDoc(f.org, allowed)
+	doc.AllowVisitors = true
+	_, err = s.CreateAssignments(ctx, viewer, templates[0].ID, &instructor, nil, allowed, "", "", "", "", time.Now(), []int64{worker}, doc)
+	must(t, err)
+	visitorSig := domain.EDSSignature{IIN: "900101300037", Name: "Гость Сериков", CMS: "cms-v", SIGEXID: "doc-v", SignID: 7}
+	must(t, s.CanSignBatch(ctx, viewer, allowed, visitorSig.IIN))
+	must(t, s.ApplyBatchEDS(ctx, viewer, allowed, visitorSig))
+	state, err := s.KioskState(ctx, viewer, allowed)
+	must(t, err)
+	if state.Total != 2 || state.Signed != 1 {
+		t.Fatalf("посетитель должен добавить подписанную строку: %+v", state)
+	}
+	var role string
+	var active bool
+	must(t, db.QueryRow(ctx, `SELECT role, active FROM users WHERE org_id=$1 AND iin=$2`, f.org, visitorSig.IIN).Scan(&role, &active))
+	if role != domain.RoleVisitor || active {
+		t.Fatalf("посетитель: role=%s active=%v", role, active)
+	}
+
+	forbidden := fmt.Sprintf("visitor-no-%d", f.org)
+	_, err = s.CreateAssignments(ctx, viewer, templates[0].ID, &instructor, nil, forbidden, "", "", "", "", time.Now(), []int64{worker}, testInductionDoc(f.org, forbidden))
+	must(t, err)
+	stranger := domain.EDSSignature{IIN: "900101300047", Name: "Чужой", CMS: "cms-x", SIGEXID: "doc-x", SignID: 8}
+	if err := s.CanSignBatch(ctx, viewer, forbidden, stranger.IIN); err == nil {
+		t.Fatal("посторонний ИИН должен быть отклонён, если посетители запрещены")
 	}
 }

@@ -15,6 +15,7 @@ type memRepo struct {
 	users    map[string]domain.User
 	codes    []*memCode
 	sessions map[string]domain.User
+	touched  int
 }
 
 type memCode struct {
@@ -90,6 +91,10 @@ func (m *memRepo) DeleteSession(_ context.Context, th string) error {
 	delete(m.sessions, th)
 	return nil
 }
+func (m *memRepo) TouchLastSeen(_ context.Context, _ int64, _ time.Time) error {
+	m.touched++
+	return nil
+}
 
 type memSMS struct{ last string }
 
@@ -106,6 +111,19 @@ func setup(fixed string) (*Service, *memRepo, *memSMS, *clock) {
 }
 
 var ctx = context.Background()
+
+func TestTouchLastSeenAtMostEveryFiveMinutes(t *testing.T) {
+	s, repo, _, clk := setup("")
+	u := domain.User{ID: 1}
+	if err := s.TouchLastSeen(ctx, u); err != nil || repo.touched != 1 {
+		t.Fatalf("first touch: %v, %d", err, repo.touched)
+	}
+	recent := clk.t.Add(-time.Minute)
+	u.LastSeenAt = &recent
+	if err := s.TouchLastSeen(ctx, u); err != nil || repo.touched != 1 {
+		t.Fatalf("recent touch must be skipped: %v, %d", err, repo.touched)
+	}
+}
 
 func isInvalid(err error, substr string) bool {
 	var ve domain.ValidationError

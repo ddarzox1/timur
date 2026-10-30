@@ -16,6 +16,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -156,8 +157,12 @@ func TestLoginAndRoles(t *testing.T) {
 	}
 
 	hse := e.login(t, hsePhone)
-	if res, body := e.get(t, hse, "/admin"); res.StatusCode != http.StatusOK || !strings.Contains(body, "Дашборд") {
+	if res, body := e.get(t, hse, "/admin"); res.StatusCode != http.StatusOK || !strings.Contains(body, "Сводка за текущий месяц") {
 		t.Fatalf("инженер ОТ → дашборд: %d", res.StatusCode)
+	}
+	var lastSeen *time.Time
+	if err := e.db.QueryRow(ctx, `SELECT last_seen_at FROM users WHERE phone=$1`, hsePhone).Scan(&lastSeen); err != nil || lastSeen == nil {
+		t.Fatalf("middleware должен обновить last_seen_at: %v %v", lastSeen, err)
 	}
 	if res, _ := e.get(t, hse, "/admin/settings"); res.StatusCode != http.StatusForbidden {
 		t.Fatal("настройки — только админ")

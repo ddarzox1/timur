@@ -15,21 +15,22 @@ const (
 // Теги db используются репозиторием для сканирования строк; на сам домен не влияют.
 
 type User struct {
-	ID           int64  `db:"id"`
-	OrgID        int64  `db:"org_id"`
-	Phone        string `db:"phone"`
-	IIN          string `db:"iin"`
-	Name         string `db:"name"`
-	BirthYear    *int   `db:"birth_year"`
-	Position     string `db:"position"`
-	DepartmentID *int64 `db:"department_id"`
-	LocationID   *int64 `db:"location_id"`
-	Role         string `db:"role"`
-	Active       bool   `db:"active"`
-	OrgName      string `db:"org_name"`
-	Department   string `db:"department"`
-	Location     string `db:"location"`
-	Overdue      bool   `db:"overdue"`
+	ID           int64      `db:"id"`
+	OrgID        int64      `db:"org_id"`
+	Phone        string     `db:"phone"`
+	IIN          string     `db:"iin"`
+	Name         string     `db:"name"`
+	BirthYear    *int       `db:"birth_year"`
+	Position     string     `db:"position"`
+	DepartmentID *int64     `db:"department_id"`
+	LocationID   *int64     `db:"location_id"`
+	Role         string     `db:"role"`
+	Active       bool       `db:"active"`
+	OrgName      string     `db:"org_name"`
+	Department   string     `db:"department"`
+	Location     string     `db:"location"`
+	Overdue      bool       `db:"overdue"`
+	LastSeenAt   *time.Time `db:"last_seen_at"`
 }
 
 // SeesOrg — специалист БиОТ или технический администратор: видит всю организацию.
