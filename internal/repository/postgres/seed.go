@@ -5,6 +5,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // Seed создаёт демо-организацию ТОО «Строй-Инвест», если база пустая.
@@ -28,11 +29,15 @@ func Seed(ctx context.Context, db *pgxpool.Pool) error {
 		q(&locAlatau, `INSERT INTO locations (org_id, name, address, lat, lng) VALUES ($1, 'Объект ЖК Алатау, Алматы', 'пр. Аль-Фараби, 77', 43.2389, 76.8897)`, org)
 		q(&locStore, `INSERT INTO locations (org_id, name, address, lat, lng) VALUES ($1, 'Склад №2, Караганда', 'ул. Складская, 12', 49.8047, 73.1094)`, org)
 		var aigerim, erlan, daniyar, assel int64
-		u := `INSERT INTO users (org_id, phone, iin, name, birth_year, position, department_id, location_id, role) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`
-		q(&aigerim, u, org, "77010000001", "900101300017", "Айгерим Нурланова", 1990, "Инженер по охране труда", depAdm, locAlatau, "admin")
-		q(&erlan, u, org, "77010000002", "900101300027", "Ерлан Сапаров", 1988, "Монтажник", depBuild, locAlatau, "worker")
-		q(&daniyar, u, org, "77010000003", "900101300037", "Данияр Ахметов", 1985, "Прораб", depBuild, locAlatau, "worker")
-		q(&assel, u, org, "77010000004", "900101300047", "Асель Жумабаева", 1996, "Кладовщик", depStore, locStore, "worker")
+		demoHash, err := bcrypt.GenerateFromPassword([]byte("Demo1234"), bcrypt.DefaultCost)
+		if err != nil {
+			return err
+		}
+		u := `INSERT INTO users (org_id, phone, iin, name, birth_year, position, department_id, location_id, role, password_hash) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`
+		q(&aigerim, u, org, "77010000001", "900101300017", "Айгерим Нурланова", 1990, "Инженер по охране труда", depAdm, locAlatau, "admin", string(demoHash))
+		q(&erlan, u, org, "77010000002", "900101300027", "Ерлан Сапаров", 1988, "Монтажник", depBuild, locAlatau, "worker", string(demoHash))
+		q(&daniyar, u, org, "77010000003", "900101300037", "Данияр Ахметов", 1985, "Прораб", depBuild, locAlatau, "worker", string(demoHash))
+		q(&assel, u, org, "77010000004", "900101300047", "Асель Жумабаева", 1996, "Кладовщик", depStore, locStore, "worker", string(demoHash))
 		if qerr != nil {
 			return qerr
 		}

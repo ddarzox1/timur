@@ -13,17 +13,19 @@ import (
 	"strings"
 
 	"qauipsiz/internal/domain"
+	"qauipsiz/internal/usecase/auth"
 )
 
 type Repo interface {
 	People(ctx context.Context, viewer domain.User, f domain.PeopleFilter) ([]domain.User, error)
 	Person(ctx context.Context, viewer domain.User, id int64) (domain.User, error)
-	// CreatePerson / UpdatePerson возвращают domain.ErrConflict, если телефон занят.
-	CreatePerson(ctx context.Context, orgID int64, u domain.User) error
+	// CreatePerson / UpdatePerson возвращают domain.ErrConflict, если телефон или ИИН занят.
+	CreatePerson(ctx context.Context, orgID int64, u domain.User, passwordHash string) error
 	UpdatePerson(ctx context.Context, orgID int64, u domain.User) error
+	ResetPassword(ctx context.Context, orgID, userID int64, passwordHash string) error
 	// ImportPeople — подразделения и объекты ищутся по названию и создаются; телефоны обновляются.
 	// Возвращает число импортированных и номера строк, где телефон занят другой организацией.
-	ImportPeople(ctx context.Context, orgID int64, rows []domain.ImportRow) (int, []int, error)
+	ImportPeople(ctx context.Context, orgID int64, rows []domain.ImportRow) (int, []int, []int, error)
 	Staff(ctx context.Context, viewer domain.User) ([]domain.User, error)
 	Departments(ctx context.Context, viewer domain.User) ([]domain.Department, error)
 	SaveDepartment(ctx context.Context, orgID int64, d domain.Department) error
@@ -62,21 +64,24 @@ func (s *Service) Staff(ctx context.Context, u domain.User) ([]domain.User, erro
 // Save создаёт (ID=0) или обновляет сотрудника.
 // Правила: админа назначает и редактирует только админ; себе нельзя менять роль и отключать доступ.
 func (s *Service) Save(ctx context.Context, by domain.User, p domain.User) error {
+	_, err := s.SaveWithInitialPassword(ctx, by, p)
+	return err
+}
+
+// SaveWithInitialPassword is Save plus the one-time clear-text password for a new employee.
+func (s *Service) SaveWithInitialPassword(ctx context.Context, by domain.User, p domain.User) (string, error) {
 	if !by.SeesOrg() {
-		return domain.ErrForbidden
+		return "", domain.ErrForbidden
 	}
 	p.Name = domain.Clip(p.Name, domain.MaxTitle)
 	p.Position = domain.Clip(p.Position, domain.MaxTitle)
 	p.Phone = domain.NormalizePhone(p.Phone)
 	p.IIN = domain.NormalizeIIN(p.IIN)
 	if p.Name == "" || domain.RoleLabels[p.Role] == "" || (p.Role != domain.RoleVisitor && p.Phone == "") {
-		return domain.Invalid("Укажите ФИО, телефон (+7 7XX XXX XX XX) и роль")
+		return "", domain.Invalid("Укажите ФИО, телефон (+7 7XX XXX XX XX) и роль")
 	}
-	if p.IIN != "" && !domain.ValidIIN(p.IIN) {
-		return domain.Invalid("ИИН должен состоять из 12 цифр и иметь верную контрольную сумму")
-	}
-	if p.Role == domain.RoleVisitor && p.IIN == "" {
-		return domain.Invalid("Для посетителя укажите ИИН")
+	if !domain.ValidIIN(p.IIN) {
+		return "", domain.Invalid("Укажите ИИН из 12 цифр с верной контрольной суммой")
 	}
 	if p.Role == domain.RoleVisitor {
 		p.Active = false
@@ -85,37 +90,79 @@ func (s *Service) Save(ctx context.Context, by domain.User, p domain.User) error
 		p.BirthYear = nil
 	}
 	if p.Role == domain.RoleAdmin && by.Role != domain.RoleAdmin {
-		return domain.Invalid("Назначать администраторов может только администратор")
+		return "", domain.Invalid("Назначать администраторов может только администратор")
 	}
 	var err error
+	var initialPassword string
 	if p.ID == 0 {
-		err = s.repo.CreatePerson(ctx, by.OrgID, p)
+		if p.Role != domain.RoleVisitor {
+			initialPassword, err = auth.NewInitialPassword()
+			if err != nil {
+				return "", err
+			}
+			var passwordHash string
+			passwordHash, err = auth.HashPassword(initialPassword)
+			if err != nil {
+				return "", err
+			}
+			err = s.repo.CreatePerson(ctx, by.OrgID, p, passwordHash)
+		} else {
+			err = s.repo.CreatePerson(ctx, by.OrgID, p, "")
+		}
 	} else {
 		old, gerr := s.repo.Person(ctx, by, p.ID)
 		if gerr != nil {
-			return gerr
+			return "", gerr
 		}
 		if old.Role == domain.RoleAdmin && by.Role != domain.RoleAdmin {
-			return domain.ErrForbidden
+			return "", domain.ErrForbidden
 		}
 		if p.ID == by.ID && (p.Role != by.Role || !p.Active) {
-			return domain.Invalid("Нельзя менять свою роль или отключать себя")
+			return "", domain.Invalid("Нельзя менять свою роль или отключать себя")
 		}
 		err = s.repo.UpdatePerson(ctx, by.OrgID, p)
 	}
 	if errors.Is(err, domain.ErrConflict) {
-		return domain.Invalid("Сотрудник с таким телефоном или ИИН уже есть")
+		return "", domain.Invalid("Сотрудник с таким телефоном или ИИН уже есть")
 	}
-	return err
+	return initialPassword, err
+}
+
+func (s *Service) ResetPassword(ctx context.Context, by domain.User, userID int64) (string, error) {
+	if !by.SeesOrg() {
+		return "", domain.ErrForbidden
+	}
+	p, err := s.repo.Person(ctx, by, userID)
+	if err != nil {
+		return "", err
+	}
+	if p.Role == domain.RoleVisitor {
+		return "", domain.Invalid("Посетитель не может входить в систему")
+	}
+	password, err := auth.NewInitialPassword()
+	if err != nil {
+		return "", err
+	}
+	passwordHash, err := auth.HashPassword(password)
+	if err != nil {
+		return "", err
+	}
+	if err := s.repo.ResetPassword(ctx, by.OrgID, userID, passwordHash); err != nil {
+		return "", err
+	}
+	return password, nil
 }
 
 // ImportHeader — колонки шаблона импорта.
 var ImportHeader = []string{"ФИО", "Телефон", "ИИН", "Год рождения", "Должность", "Подразделение", "Объект"}
 
 type ImportResult struct {
-	Imported int
-	Errors   []string
+	Imported    int
+	Errors      []string
+	Credentials []InitialCredential
 }
+
+type InitialCredential struct{ Name, IIN, Password string }
 
 const maxImportErrors = 20
 
@@ -149,7 +196,7 @@ func ParseCSV(r io.Reader) ([]domain.ImportRow, []string, error) {
 		for j := range rec {
 			rec[j] = strings.TrimSpace(rec[j])
 		}
-		if rec[0] == "" && rec[1] == "" {
+		if rec[0] == "" && rec[1] == "" && rec[2] == "" {
 			continue
 		}
 		phone := domain.NormalizePhone(rec[1])
@@ -158,8 +205,8 @@ func ParseCSV(r io.Reader) ([]domain.ImportRow, []string, error) {
 			continue
 		}
 		iin := domain.NormalizeIIN(rec[2])
-		if iin != "" && !domain.ValidIIN(iin) {
-			errs = append(errs, fmt.Sprintf("Строка %d: неверный ИИН", line))
+		if !domain.ValidIIN(iin) {
+			errs = append(errs, fmt.Sprintf("Строка %d: нужен корректный ИИН", line))
 			continue
 		}
 		row := domain.ImportRow{Line: line, Name: domain.Clip(rec[0], domain.MaxTitle), Phone: phone, IIN: iin, Position: domain.Clip(rec[4], domain.MaxTitle),
@@ -180,17 +227,37 @@ func (s *Service) Import(ctx context.Context, u domain.User, r io.Reader) (Impor
 	if err != nil {
 		return ImportResult{}, err
 	}
-	n, conflicts, err := s.repo.ImportPeople(ctx, u.OrgID, rows)
+	for i := range rows {
+		rows[i].InitialPassword, err = auth.NewInitialPassword()
+		if err != nil {
+			return ImportResult{}, err
+		}
+		rows[i].PasswordHash, err = auth.HashPassword(rows[i].InitialPassword)
+		if err != nil {
+			return ImportResult{}, err
+		}
+	}
+	n, conflicts, created, err := s.repo.ImportPeople(ctx, u.OrgID, rows)
 	if err != nil {
 		return ImportResult{}, err
 	}
 	for _, line := range conflicts {
-		errs = append(errs, fmt.Sprintf("Строка %d: телефон занят в другой компании", line))
+		errs = append(errs, fmt.Sprintf("Строка %d: телефон или ИИН уже занят", line))
 	}
 	if len(errs) > maxImportErrors {
 		errs = append(errs[:maxImportErrors], fmt.Sprintf("…и ещё %d", len(errs)-maxImportErrors))
 	}
-	return ImportResult{Imported: n, Errors: errs}, nil
+	createdSet := make(map[int]bool, len(created))
+	for _, line := range created {
+		createdSet[line] = true
+	}
+	var credentials []InitialCredential
+	for _, row := range rows {
+		if createdSet[row.Line] {
+			credentials = append(credentials, InitialCredential{Name: row.Name, IIN: row.IIN, Password: row.InitialPassword})
+		}
+	}
+	return ImportResult{Imported: n, Errors: errs, Credentials: credentials}, nil
 }
 
 // --- оргструктура ---

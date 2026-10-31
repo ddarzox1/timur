@@ -42,9 +42,6 @@ func run() error {
 	if !cfg.SIGEX.Fake {
 		return errors.New("реальный SIGEX пока выключен: сначала подтвердите договор, mTLS и регистрацию первой подписи; используйте SIGEX_FAKE=1")
 	}
-	if cfg.FixedOTP != "" {
-		slog.Warn("⚠️ ТЕСТОВЫЙ РЕЖИМ: код входа у всех номеров одинаковый — не используйте в проде", "FIXED_OTP", cfg.FixedOTP)
-	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -57,6 +54,17 @@ func run() error {
 		if err := postgres.Seed(ctx, pool); err != nil {
 			return err
 		}
+	}
+	provisioned, withoutIIN, err := postgres.ProvisionInitialPasswords(ctx, pool)
+	if err != nil {
+		return err
+	}
+	for _, p := range provisioned {
+		slog.Warn("выдан первичный пароль существующему сотруднику; передайте его пользователю и удалите запись из логов",
+			"user_id", p.UserID, "name", p.Name, "iin", p.IIN, "password", p.Password)
+	}
+	if len(withoutIIN) > 0 {
+		slog.Warn("активным сотрудникам без корректного уникального ИИН пароль не выдан", "user_ids", withoutIIN)
 	}
 
 	files, filesOrigin, err := newStorage(ctx, cfg)
@@ -104,7 +112,7 @@ func NewHandler(store *postgres.Store, files fileStore, filesOrigin string, cfg 
 	sender := sms.Log{}
 	hazards := hazard.New(store, store, files)
 	return httpdelivery.New(httpdelivery.Services{
-		Auth:       auth.New(store, sender, cfg.FixedOTP),
+		Auth:       auth.New(store),
 		Hazards:    hazards,
 		Inductions: induction.New(store, store, files, sender, pdfinfra.Protocol{}, sigex.NewFake(), cfg.BaseURL),
 		Checklists: checklist.New(store, store, files, hazards),

@@ -4,7 +4,7 @@
 <p><a href="/admin/people">‹ Сотрудники</a></p>
 <h1>{{or .P.Name "Новый сотрудник"}}</h1>
 <div class="grid cols">
-<form class="card" hx-post="/admin/people/save"><fieldset {{if not .Me.SeesOrg}}disabled{{end}} style="border:0;padding:0;margin:0">
+<form class="card" method="post" action="/admin/people/save"><fieldset {{if not .Me.SeesOrg}}disabled{{end}} style="border:0;padding:0;margin:0">
   {{if .P.ID}}<input type="hidden" name="id" value="{{.P.ID}}">{{end}}
   <div class="field"><label for="name">ФИО</label><input id="name" name="name" value="{{.P.Name}}" required></div>
   <div class="grid">
@@ -25,6 +25,7 @@
 </form>
 {{if .P.ID}}
 <div>
+  {{if .Me.SeesOrg}}<form method="post" action="/admin/people/{{.P.ID}}/password" style="margin-bottom:1rem"><button class="btn" type="submit">Выдать новый пароль</button></form>{{end}}
   <div class="row between"><h2 style="margin-top:0">Инструктажи</h2><a class="btn" href="/admin/assign?q={{.P.Name}}">Назначить</a></div>
   <div class="table-wrap"><table><tbody>
     {{range .Inductions}}<tr><td>{{.Title}}<div class="small muted">{{kind .Kind}}</div></td><td>{{template "assignBadge" .}}</td></tr>

@@ -9,8 +9,20 @@
   <div class="small muted">{{t "Подразделение"}}</div><div>{{or .Me.Department "—"}}</div>
   <div class="small muted" style="margin-top:.5rem">{{t "Объект"}}</div><div>{{or .Me.Location "—"}}</div>
   <div class="small muted" style="margin-top:.5rem">{{t "Телефон"}}</div><div>{{phone .Me.Phone}}</div>
+	<div class="small muted" style="margin-top:.5rem">{{t "ИИН"}}</div><div>{{maskIIN .Me.IIN}}</div>
 </div>
 <div class="card row between"><span>{{t "Язык"}}</span>{{template "langswitch" .}}</div>
+<details class="card" {{if .PasswordError}}open{{end}}>
+  <summary><b>{{t "Изменить пароль"}}</b></summary>
+  <form method="post" action="/m/profile/password" style="margin-top:1rem">
+    {{if .PasswordSaved}}<div class="success">{{t "Пароль изменён"}}</div>{{end}}
+    {{with .PasswordError}}<div class="error">{{t .}}</div>{{end}}
+    <div class="field"><label for="current-password">{{t "Текущий пароль"}}</label><input id="current-password" name="current_password" type="password" autocomplete="current-password" required></div>
+    <div class="field"><label for="new-password">{{t "Новый пароль"}}</label><input id="new-password" name="new_password" type="password" autocomplete="new-password" minlength="8" required></div>
+    <div class="field"><label for="confirm-password">{{t "Повторите новый пароль"}}</label><input id="confirm-password" name="confirm_password" type="password" autocomplete="new-password" minlength="8" required></div>
+    <button class="btn primary" type="submit">{{t "Сохранить пароль"}}</button>
+  </form>
+</details>
 <h2>{{t "Подписанные инструктажи"}}</h2>
 {{if .Signed}}<div class="card">{{end}}
 {{range .Signed}}

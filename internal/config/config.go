@@ -12,10 +12,9 @@ type Config struct {
 	Addr         string
 	BaseURL      string // для ссылок в SMS
 	UploadsDir   string
-	CookieSecure bool   // включать за HTTPS
-	FixedOTP     string // временный общий код до подключения SMS; "" — случайный код. Только явным FIXED_OTP.
-	PricePerUser int    // ₸ за сотрудника в месяц
-	Seed         bool   // создать демо-данные в пустой базе
+	CookieSecure bool // включать за HTTPS
+	PricePerUser int  // ₸ за сотрудника в месяц
+	Seed         bool // создать демо-данные в пустой базе
 
 	Storage string // local — диск (UPLOADS_DIR), s3 — S3-совместимое хранилище
 	S3      S3
@@ -39,7 +38,6 @@ func Load() Config {
 		BaseURL:      get("BASE_URL", "http://localhost:8080"),
 		UploadsDir:   get("UPLOADS_DIR", "uploads"),
 		CookieSecure: get("COOKIE_SECURE", "") == "1",
-		FixedOTP:     get("FIXED_OTP", ""), // ponytail: убрать вместе с подключением Mobizon/SMSC.kz
 		PricePerUser: 9990,
 		Seed:         get("SEED", "") == "1",
 		Storage:      get("STORAGE", "local"),
@@ -58,20 +56,13 @@ func Load() Config {
 			Fake: get("SIGEX_FAKE", "1") == "1",
 		},
 	}
-	if c.FixedOTP == "off" {
-		c.FixedOTP = ""
-	}
 	if n, err := strconv.Atoi(get("PRICE_PER_USER", "")); err == nil {
 		c.PricePerUser = n
 	}
 	return c
 }
 
-// Validate запрещает опасные сочетания: тестовый код входа за HTTPS — признак прода.
 func (c Config) Validate() error {
-	if c.FixedOTP != "" && c.CookieSecure {
-		return errors.New("FIXED_OTP нельзя включать вместе с COOKIE_SECURE=1: любой войдёт под любым сотрудником")
-	}
 	switch c.Storage {
 	case "local":
 	case "s3":

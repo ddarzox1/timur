@@ -12,221 +12,84 @@ import (
 )
 
 type memRepo struct {
-	users    map[string]domain.User
-	codes    []*memCode
-	sessions map[string]domain.User
-	touched  int
+	credential Credential
+	sessions   map[string]domain.User
+	touched    int
 }
 
-type memCode struct {
-	Code
-	phone   string
-	expires time.Time
-	created time.Time
-	used    bool
+func newRepo(t *testing.T) *memRepo {
+	t.Helper()
+	h, err := HashPassword("Start123")
+	if err != nil { t.Fatal(err) }
+	return &memRepo{credential: Credential{User: domain.User{ID: 1, IIN: "900101300017", Role: domain.RoleHSE, Active: true}, PasswordHash: h}, sessions: map[string]domain.User{}}
 }
 
-func newRepo() *memRepo {
-	return &memRepo{users: map[string]domain.User{"77010000001": {ID: 1, Role: domain.RoleHSE, Active: true}}, sessions: map[string]domain.User{}}
+func (m *memRepo) LoginCredential(_ context.Context, iin string) (Credential, error) {
+	if iin != m.credential.User.IIN { return Credential{}, domain.ErrNotFound }
+	return m.credential, nil
+}
+func (m *memRepo) CreateSession(_ context.Context, id int64, token string, _ time.Time) (domain.User, error) {
+	if id != m.credential.User.ID { return domain.User{}, domain.ErrNotFound }
+	m.sessions[token] = m.credential.User
+	return m.credential.User, nil
+}
+func (m *memRepo) SessionUser(_ context.Context, token string, _ time.Time) (domain.User, error) {
+	u, ok := m.sessions[token]
+	if !ok { return domain.User{}, domain.ErrNotFound }
+	return u, nil
+}
+func (m *memRepo) DeleteSession(_ context.Context, token string) error { delete(m.sessions, token); return nil }
+func (m *memRepo) PasswordHash(_ context.Context, id int64) (string, error) {
+	if id != 1 { return "", domain.ErrNotFound }
+	return m.credential.PasswordHash, nil
+}
+func (m *memRepo) UpdatePassword(_ context.Context, id int64, h string) error { m.credential.PasswordHash = h; return nil }
+func (m *memRepo) TouchLastSeen(_ context.Context, _ int64, _ time.Time) error { m.touched++; return nil }
+
+func invalid(err error, part string) bool {
+	var ve domain.ValidationError
+	return errors.As(err, &ve) && strings.Contains(string(ve), part)
 }
 
-func (m *memRepo) ActiveUserExists(_ context.Context, phone string) (bool, error) {
-	_, ok := m.users[phone]
-	return ok, nil
+func TestLoginByIINAndSession(t *testing.T) {
+	repo := newRepo(t)
+	s := New(repo)
+	if _, _, err := s.Login(context.Background(), "900101300017", "wrong"); !invalid(err, "ИИН или пароль") { t.Fatalf("wrong password: %v", err) }
+	if _, _, err := s.Login(context.Background(), "123", "Start123"); !invalid(err, "ИИН или пароль") { t.Fatalf("bad IIN: %v", err) }
+	token, u, err := s.Login(context.Background(), "900101300017", "Start123")
+	if err != nil || token == "" || u.ID != 1 { t.Fatalf("login: %v", err) }
+	if got, err := s.SessionUser(context.Background(), token); err != nil || got.ID != 1 { t.Fatalf("session: %v", err) }
+	if err := s.Logout(context.Background(), token); err != nil { t.Fatal(err) }
+	if _, err := s.SessionUser(context.Background(), token); !errors.Is(err, domain.ErrNotFound) { t.Fatal("session survived logout") }
 }
-func (m *memRepo) LastCodeAt(_ context.Context, phone string) (*time.Time, error) {
-	var last *time.Time
-	for _, c := range m.codes {
-		if c.phone == phone {
-			t := c.created
-			last = &t
-		}
+
+func TestChangePassword(t *testing.T) {
+	repo := newRepo(t)
+	s := New(repo)
+	u := repo.credential.User
+	if err := s.ChangePassword(context.Background(), u, "bad", "NewPass99", "NewPass99"); !invalid(err, "Текущий") { t.Fatalf("current: %v", err) }
+	if err := s.ChangePassword(context.Background(), u, "Start123", "short", "short"); !invalid(err, "8") { t.Fatalf("short: %v", err) }
+	if err := s.ChangePassword(context.Background(), u, "Start123", "NewPass99", "different"); !invalid(err, "не совпадают") { t.Fatalf("confirm: %v", err) }
+	if err := s.ChangePassword(context.Background(), u, "Start123", "NewPass99", "NewPass99"); err != nil { t.Fatal(err) }
+	if _, _, err := s.Login(context.Background(), u.IIN, "NewPass99"); err != nil { t.Fatalf("new password: %v", err) }
+}
+
+func TestInitialPasswordFormat(t *testing.T) {
+	seen := map[string]bool{}
+	for i := 0; i < 100; i++ {
+		p, err := NewInitialPassword()
+		if err != nil { t.Fatal(err) }
+		if !regexp.MustCompile(`^[A-Za-z0-9]{8}$`).MatchString(p) || !regexp.MustCompile(`[A-Za-z]`).MatchString(p) || !regexp.MustCompile(`[0-9]`).MatchString(p) { t.Fatalf("bad password %q", p) }
+		seen[p] = true
 	}
-	return last, nil
+	if len(seen) < 99 { t.Fatalf("passwords are not random enough: %d unique", len(seen)) }
 }
-func (m *memRepo) CodesSince(_ context.Context, phone string, since time.Time) (int, error) {
-	n := 0
-	for _, c := range m.codes {
-		if c.phone == phone && !c.created.Before(since) {
-			n++
-		}
-	}
-	return n, nil
-}
-func (m *memRepo) SaveCode(_ context.Context, phone, h string, exp time.Time) error {
-	m.codes = append(m.codes, &memCode{Code: Code{ID: int64(len(m.codes) + 1), Hash: h}, phone: phone, expires: exp, created: exp.Add(-CodeTTL)})
-	return nil
-}
-func (m *memRepo) ActiveCode(_ context.Context, phone string, now time.Time) (Code, error) {
-	for i := len(m.codes) - 1; i >= 0; i-- {
-		c := m.codes[i]
-		if c.phone == phone && !c.used && c.expires.After(now) {
-			return c.Code, nil
-		}
-	}
-	return Code{}, domain.ErrNotFound
-}
-func (m *memRepo) IncAttempts(_ context.Context, id int64) error {
-	m.codes[id-1].Attempts++
-	return nil
-}
-func (m *memRepo) UseCode(_ context.Context, id int64) (bool, error) {
-	if m.codes[id-1].used {
-		return false, nil
-	}
-	m.codes[id-1].used = true
-	return true, nil
-}
-func (m *memRepo) CreateSession(_ context.Context, phone, th string, _ time.Time) (domain.User, error) {
-	m.sessions[th] = m.users[phone]
-	return m.users[phone], nil
-}
-func (m *memRepo) SessionUser(_ context.Context, th string, _ time.Time) (domain.User, error) {
-	if u, ok := m.sessions[th]; ok {
-		return u, nil
-	}
-	return domain.User{}, domain.ErrNotFound
-}
-func (m *memRepo) DeleteSession(_ context.Context, th string) error {
-	delete(m.sessions, th)
-	return nil
-}
-func (m *memRepo) TouchLastSeen(_ context.Context, _ int64, _ time.Time) error {
-	m.touched++
-	return nil
-}
-
-type memSMS struct{ last string }
-
-func (s *memSMS) Send(_, text string) error { s.last = text; return nil }
-func (s *memSMS) code() string              { return regexp.MustCompile(`\d{4}$`).FindString(s.last) }
-
-type clock struct{ t time.Time }
-
-func (c *clock) now() time.Time { return c.t }
-
-func setup(fixed string) (*Service, *memRepo, *memSMS, *clock) {
-	repo, sms, clk := newRepo(), &memSMS{}, &clock{time.Date(2026, 10, 16, 9, 0, 0, 0, time.UTC)}
-	return New(repo, sms, fixed).WithClock(clk.now), repo, sms, clk
-}
-
-var ctx = context.Background()
 
 func TestTouchLastSeenAtMostEveryFiveMinutes(t *testing.T) {
-	s, repo, _, clk := setup("")
-	u := domain.User{ID: 1}
-	if err := s.TouchLastSeen(ctx, u); err != nil || repo.touched != 1 {
-		t.Fatalf("first touch: %v, %d", err, repo.touched)
-	}
-	recent := clk.t.Add(-time.Minute)
-	u.LastSeenAt = &recent
-	if err := s.TouchLastSeen(ctx, u); err != nil || repo.touched != 1 {
-		t.Fatalf("recent touch must be skipped: %v, %d", err, repo.touched)
-	}
-}
-
-func isInvalid(err error, substr string) bool {
-	var ve domain.ValidationError
-	return errors.As(err, &ve) && strings.Contains(string(ve), substr)
-}
-
-func TestRequestCodeValidation(t *testing.T) {
-	s, _, _, _ := setup("")
-	if _, err := s.RequestCode(ctx, "123"); !isInvalid(err, "формате") {
-		t.Fatalf("плохой номер: %v", err)
-	}
-	if _, err := s.RequestCode(ctx, "+7 777 999 88 77"); !isInvalid(err, "нет в компании") {
-		t.Fatalf("неизвестный номер: %v", err)
-	}
-}
-
-func TestLoginHappyPathAndReuse(t *testing.T) {
-	s, _, sms, _ := setup("")
-	r, err := s.RequestCode(ctx, "8 701 000 00 01")
-	if err != nil || r.Phone != "77010000001" {
-		t.Fatalf("RequestCode: %+v %v", r, err)
-	}
-	token, u, err := s.VerifyCode(ctx, r.Phone, sms.code())
-	if err != nil || token == "" || u.ID != 1 {
-		t.Fatalf("VerifyCode: %v", err)
-	}
-	if got, err := s.SessionUser(ctx, token); err != nil || got.ID != 1 {
-		t.Fatalf("SessionUser: %v", err)
-	}
-	if _, _, err := s.VerifyCode(ctx, r.Phone, sms.code()); !isInvalid(err, "истёк") {
-		t.Fatalf("код сработал повторно: %v", err)
-	}
-	if err := s.Logout(ctx, token); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := s.SessionUser(ctx, token); !errors.Is(err, domain.ErrNotFound) {
-		t.Fatal("сессия жива после выхода")
-	}
-}
-
-func TestWrongCodeAttempts(t *testing.T) {
-	s, _, sms, _ := setup("")
-	s.RequestCode(ctx, "77010000001")
-	good := sms.code()
-	wrong := "0000"
-	if good == wrong {
-		wrong = "1111"
-	}
-	_, _, err := s.VerifyCode(ctx, "77010000001", wrong)
-	if !isInvalid(err, "Осталось попыток: 4") {
-		t.Fatalf("первая ошибка: %v", err)
-	}
-	for i := 0; i < MaxAttempts-1; i++ {
-		s.VerifyCode(ctx, "77010000001", wrong)
-	}
-	if _, _, err := s.VerifyCode(ctx, "77010000001", good); !isInvalid(err, "попытки закончились") {
-		t.Fatalf("после %d ошибок верный код всё ещё работает: %v", MaxAttempts, err)
-	}
-}
-
-func TestCodeExpiresAndResendThrottle(t *testing.T) {
-	s, repo, sms, clk := setup("")
-	s.RequestCode(ctx, "77010000001")
-	code := sms.code()
-
-	clk.t = clk.t.Add(10 * time.Second)
-	r, _ := s.RequestCode(ctx, "77010000001")
-	if r.Wait != 50 || len(repo.codes) != 1 {
-		t.Fatalf("повторная отправка через 10 с: wait=%d, кодов=%d", r.Wait, len(repo.codes))
-	}
-
-	clk.t = clk.t.Add(CodeTTL)
-	if _, _, err := s.VerifyCode(ctx, "77010000001", code); !isInvalid(err, "истёк") {
-		t.Fatalf("истёкший код принят: %v", err)
-	}
-}
-
-func TestFixedCode(t *testing.T) {
-	s, _, _, _ := setup("1111")
-	for i := 0; i < 2; i++ { // без ограничения на повторную отправку
-		r, err := s.RequestCode(ctx, "77010000001")
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, _, err := s.VerifyCode(ctx, r.Phone, "1111"); err != nil {
-			t.Fatalf("вход %d с 1111: %v", i+1, err)
-		}
-	}
-}
-
-func TestCodesPerHourLimit(t *testing.T) {
-	s, _, _, clk := setup("")
-	for i := 0; i < MaxCodesPerHour; i++ {
-		if _, err := s.RequestCode(ctx, "77010000001"); err != nil {
-			t.Fatalf("код %d: %v", i+1, err)
-		}
-		clk.t = clk.t.Add(ResendAfter)
-	}
-	if _, err := s.RequestCode(ctx, "77010000001"); !isInvalid(err, "Слишком много") {
-		t.Fatalf("шестой код за час: %v", err)
-	}
-	clk.t = clk.t.Add(time.Hour)
-	if _, err := s.RequestCode(ctx, "77010000001"); err != nil {
-		t.Fatalf("через час снова можно: %v", err)
-	}
+	repo := newRepo(t)
+	now := time.Date(2026, 10, 30, 9, 0, 0, 0, time.UTC)
+	s := New(repo).WithClock(func() time.Time { return now })
+	if err := s.TouchLastSeen(context.Background(), domain.User{ID: 1}); err != nil || repo.touched != 1 { t.Fatal(err) }
+	recent := now.Add(-time.Minute)
+	if err := s.TouchLastSeen(context.Background(), domain.User{ID: 1, LastSeenAt: &recent}); err != nil || repo.touched != 1 { t.Fatal("recent touch should be skipped") }
 }

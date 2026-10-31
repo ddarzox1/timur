@@ -195,25 +195,25 @@ func TestPeopleConflictAndImport(t *testing.T) {
 	s, db := testStore(t)
 	a, b := newFixture(t, db), newFixture(t, db)
 	phone := randomPhone()
-	must(t, s.CreatePerson(ctx, a.org, domain.User{Name: "Ерлан", Phone: phone, Role: domain.RoleWorker, Active: true, LocationID: &b.loc}))
-	if err := s.CreatePerson(ctx, a.org, domain.User{Name: "Дубль", Phone: phone, Role: domain.RoleWorker}); !errors.Is(err, domain.ErrConflict) {
+	must(t, s.CreatePerson(ctx, a.org, domain.User{Name: "Ерлан", Phone: phone, IIN: "900101300017", Role: domain.RoleWorker, Active: true, LocationID: &b.loc}, "hash"))
+	if err := s.CreatePerson(ctx, a.org, domain.User{Name: "Дубль", Phone: phone, IIN: "900101300027", Role: domain.RoleWorker}, "hash"); !errors.Is(err, domain.ErrConflict) {
 		t.Fatalf("дубль телефона: %v", err)
 	}
 	iin := "870514300470"
-	must(t, s.CreatePerson(ctx, a.org, domain.User{Name: "Посетитель", IIN: iin, Role: domain.RoleVisitor}))
-	if err := s.CreatePerson(ctx, a.org, domain.User{Name: "Дубль ИИН", IIN: iin, Role: domain.RoleVisitor}); !errors.Is(err, domain.ErrConflict) {
+	must(t, s.CreatePerson(ctx, a.org, domain.User{Name: "Посетитель", IIN: iin, Role: domain.RoleVisitor}, ""))
+	if err := s.CreatePerson(ctx, a.org, domain.User{Name: "Дубль ИИН", IIN: iin, Role: domain.RoleVisitor}, ""); !errors.Is(err, domain.ErrConflict) {
 		t.Fatalf("дубль ИИН в организации: %v", err)
 	}
-	must(t, s.CreatePerson(ctx, b.org, domain.User{Name: "Тот же ИИН", IIN: iin, Role: domain.RoleVisitor}))
+	must(t, s.CreatePerson(ctx, b.org, domain.User{Name: "Тот же посетитель", IIN: iin, Role: domain.RoleVisitor}, ""))
 	ppl, _ := s.People(ctx, domain.User{OrgID: a.org, Role: domain.RoleHSE}, domain.PeopleFilter{Query: "Ерлан"})
 	if len(ppl) != 1 || ppl[0].LocationID != nil {
 		t.Fatalf("объект чужой организации не должен привязываться: %+v", ppl)
 	}
 
-	n, conflicts, err := s.ImportPeople(ctx, b.org, []domain.ImportRow{
-		{Line: 2, Name: "Берик", Phone: randomPhone(), Department: "Сварочный участок", Location: "Новый объект"},
-		{Line: 3, Name: "Асель", Phone: randomPhone(), Department: "сварочный УЧАСТОК"},
-		{Line: 4, Name: "Чужой", Phone: phone},
+	n, conflicts, _, err := s.ImportPeople(ctx, b.org, []domain.ImportRow{
+		{Line: 2, Name: "Берик", Phone: randomPhone(), IIN: "900101300037", PasswordHash: "hash", Department: "Сварочный участок", Location: "Новый объект"},
+		{Line: 3, Name: "Асель", Phone: randomPhone(), IIN: "900101300047", PasswordHash: "hash", Department: "сварочный УЧАСТОК"},
+		{Line: 4, Name: "Чужой", Phone: phone, IIN: "900101300017", PasswordHash: "hash"},
 	})
 	must(t, err)
 	if n != 2 || len(conflicts) != 1 || conflicts[0] != 4 {
@@ -331,31 +331,6 @@ func TestAssignmentFieldsPersistence(t *testing.T) {
 	must(t, err)
 	if len(users) != 1 || users[0].Position != "Электромонтажник" {
 		t.Fatalf("данные для валидации: %+v", users)
-	}
-}
-
-func TestOTPCodes(t *testing.T) {
-	s, _ := testStore(t)
-	phone, now := randomPhone(), time.Now()
-	must(t, s.SaveCode(ctx, phone, "h1", now.Add(-time.Second)))
-	if _, err := s.ActiveCode(ctx, phone, now); !errors.Is(err, domain.ErrNotFound) {
-		t.Fatal("истёкший код не активен")
-	}
-	must(t, s.SaveCode(ctx, phone, "h2", now.Add(time.Minute)))
-	c, err := s.ActiveCode(ctx, phone, now)
-	must(t, err)
-	if c.Hash != "h2" {
-		t.Fatalf("активный код: %+v", c)
-	}
-	must(t, s.IncAttempts(ctx, c.ID))
-	if c, _ := s.ActiveCode(ctx, phone, now); c.Attempts != 1 {
-		t.Fatal("попытки")
-	}
-	if ok, _ := s.UseCode(ctx, c.ID); !ok {
-		t.Fatal("первое использование")
-	}
-	if ok, _ := s.UseCode(ctx, c.ID); ok {
-		t.Fatal("код одноразовый")
 	}
 }
 

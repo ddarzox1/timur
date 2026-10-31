@@ -20,9 +20,8 @@ services:
     environment:
       DATABASE_URL: postgres://qauipsiz:${POSTGRES_PASSWORD:-qauipsiz}@db:5432/qauipsiz?sslmode=disable
       BASE_URL: ${BASE_URL:-http://localhost:8080}
-      # Локальная разработка: демо-данные и вход по коду 1111. На проде — SEED=0 и FIXED_OTP пустой.
+      # Локальная разработка: демо-данные. На проде — SEED=0.
       SEED: ${SEED:-1}
-      FIXED_OTP: ${FIXED_OTP:-1111}
       SIGEX_FAKE: ${SIGEX_FAKE:-1}
       # Хранилище файлов: local (том uploads) или s3 (внешний S3; локальный S3 из профиля s3 — только через make up-s3).
       STORAGE: ${STORAGE:-local}

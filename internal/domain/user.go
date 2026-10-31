@@ -94,12 +94,16 @@ func (l Location) Contains(lat, lng float64) (inside, ok bool) {
 type PeopleFilter struct{ Query, Department, Location string }
 
 type ImportRow struct {
-	Line       int
-	Name       string
-	Phone      string
-	IIN        string
-	BirthYear  *int
-	Position   string
-	Department string
-	Location   string
+	Line  int
+	Name  string
+	Phone string
+	IIN   string
+	// PasswordHash/InitialPassword are populated only inside the import use case.
+	// The clear text is shown to an administrator once and is never persisted.
+	PasswordHash    string
+	InitialPassword string
+	BirthYear       *int
+	Position        string
+	Department      string
+	Location        string
 }

@@ -80,17 +80,55 @@ func (s *Store) savePerson(ctx context.Context, orgID int64, u domain.User, inse
 	return err
 }
 
-func (s *Store) CreatePerson(ctx context.Context, orgID int64, u domain.User) error {
-	return s.savePerson(ctx, orgID, u, true)
+func (s *Store) CreatePerson(ctx context.Context, orgID int64, u domain.User, passwordHash string) error {
+	if passwordHash == "" {
+		return s.savePerson(ctx, orgID, u, true)
+	}
+	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+		dep, err := ownRef(ctx, tx, "departments", orgID, u.DepartmentID)
+		if err != nil {
+			return err
+		}
+		loc, err := ownRef(ctx, tx, "locations", orgID, u.LocationID)
+		if err != nil {
+			return err
+		}
+		var phone any
+		if u.Phone != "" {
+			phone = u.Phone
+		}
+		_, err = tx.Exec(ctx, `INSERT INTO users (org_id, phone, iin, name, birth_year, position, department_id, location_id, role, active, password_hash)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`, orgID, phone, u.IIN, u.Name, u.BirthYear, u.Position, dep, loc, u.Role, u.Active, passwordHash)
+		return err
+	})
+	if isUniqueViolation(err) {
+		return domain.ErrConflict
+	}
+	return err
 }
 
 func (s *Store) UpdatePerson(ctx context.Context, orgID int64, u domain.User) error {
 	return s.savePerson(ctx, orgID, u, false)
 }
 
-func (s *Store) ImportPeople(ctx context.Context, orgID int64, rows []domain.ImportRow) (int, []int, error) {
+func (s *Store) ResetPassword(ctx context.Context, orgID, userID int64, passwordHash string) error {
+	return pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+		tag, err := tx.Exec(ctx, `UPDATE users SET password_hash=$3 WHERE org_id=$1 AND id=$2`, orgID, userID, passwordHash)
+		if err != nil {
+			return err
+		}
+		if tag.RowsAffected() == 0 {
+			return domain.ErrNotFound
+		}
+		_, err = tx.Exec(ctx, `DELETE FROM sessions WHERE user_id=$1`, userID)
+		return err
+	})
+}
+
+func (s *Store) ImportPeople(ctx context.Context, orgID int64, rows []domain.ImportRow) (int, []int, []int, error) {
 	imported := 0
 	var conflicts []int
+	var created []int
 	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
 		refs := map[string]*int64{}
 		ref := func(table, name string) (*int64, error) {
@@ -121,26 +159,30 @@ func (s *Store) ImportPeople(ctx context.Context, orgID int64, rows []domain.Imp
 			if err != nil {
 				return err
 			}
-			var iin any
-			if r.IIN != "" {
-				iin = r.IIN
+			var inserted bool
+			err = tx.QueryRow(ctx, `INSERT INTO users (org_id, phone, iin, name, birth_year, position, department_id, location_id, password_hash)
+				VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+				ON CONFLICT (iin) WHERE iin IS NOT NULL AND active AND password_hash <> '' DO UPDATE SET phone = $2, name = $4, birth_year = $5, position = $6, department_id = $7, location_id = $8
+				WHERE users.org_id = $1
+				RETURNING (xmax = 0)`, orgID, r.Phone, r.IIN, r.Name, r.BirthYear, r.Position, dep, loc, r.PasswordHash).Scan(&inserted)
+			if err == pgx.ErrNoRows {
+				conflicts = append(conflicts, r.Line)
+				continue
 			}
-			tag, err := tx.Exec(ctx, `INSERT INTO users (org_id, phone, iin, name, birth_year, position, department_id, location_id)
-				VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-				ON CONFLICT (phone) DO UPDATE SET iin = $3, name = $4, birth_year = $5, position = $6, department_id = $7, location_id = $8
-				WHERE users.org_id = $1`, orgID, r.Phone, iin, r.Name, r.BirthYear, r.Position, dep, loc)
 			if err != nil {
 				return err
 			}
-			if tag.RowsAffected() == 0 {
-				conflicts = append(conflicts, r.Line)
-				continue
+			if inserted {
+				created = append(created, r.Line)
 			}
 			imported++
 		}
 		return nil
 	})
-	return imported, conflicts, err
+	if isUniqueViolation(err) {
+		return imported, conflicts, created, domain.ErrConflict
+	}
+	return imported, conflicts, created, err
 }
 
 func (s *Store) Staff(ctx context.Context, viewer domain.User) ([]domain.User, error) {

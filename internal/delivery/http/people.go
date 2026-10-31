@@ -71,10 +71,27 @@ func (h *Handler) personSave(w http.ResponseWriter, r *http.Request, u domain.Us
 	if y := formInt(r, "birth_year", 0); y > 0 {
 		p.BirthYear = &y
 	}
-	if err := h.people.Save(r.Context(), u, p); err != nil {
+	password, err := h.people.SaveWithInitialPassword(r.Context(), u, p)
+	if err != nil {
 		return err
 	}
+	if password != "" {
+		return render(w, r, "password_issued", map[string]any{"Credentials": []people.InitialCredential{{Name: p.Name, IIN: domain.NormalizeIIN(p.IIN), Password: password}}})
+	}
 	return redirect(w, r, "/admin/people")
+}
+
+func (h *Handler) personPasswordReset(w http.ResponseWriter, r *http.Request, u domain.User) error {
+	id := pathID(r)
+	p, err := h.people.Get(r.Context(), u, id)
+	if err != nil {
+		return err
+	}
+	password, err := h.people.ResetPassword(r.Context(), u, id)
+	if err != nil {
+		return err
+	}
+	return render(w, r, "password_issued", map[string]any{"Reset": true, "Credentials": []people.InitialCredential{{Name: p.Name, IIN: p.IIN, Password: password}}})
 }
 
 func (h *Handler) peopleTemplate(w http.ResponseWriter, r *http.Request, _ domain.User) error {
@@ -94,6 +111,9 @@ func (h *Handler) peopleImport(w http.ResponseWriter, r *http.Request, u domain.
 	res, err := h.people.Import(r.Context(), u, f)
 	if err != nil {
 		return err
+	}
+	if len(res.Credentials) > 0 {
+		return render(w, r, "password_issued", map[string]any{"Credentials": res.Credentials, "Imported": res.Imported, "Errors": res.Errors})
 	}
 	q := url.Values{"imported": {strconv.Itoa(res.Imported)}, "err": res.Errors}
 	return redirect(w, r, "/admin/people?"+q.Encode())

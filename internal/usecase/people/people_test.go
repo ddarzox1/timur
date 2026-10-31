@@ -26,7 +26,7 @@ func (m *memRepo) Person(_ context.Context, viewer domain.User, id int64) (domai
 	}
 	return p, nil
 }
-func (m *memRepo) CreatePerson(_ context.Context, org int64, u domain.User) error {
+func (m *memRepo) CreatePerson(_ context.Context, org int64, u domain.User, _ string) error {
 	for _, p := range m.people {
 		if p.Phone == u.Phone {
 			return domain.ErrConflict
@@ -40,9 +40,19 @@ func (m *memRepo) UpdatePerson(_ context.Context, _ int64, u domain.User) error 
 	m.people[u.ID] = u
 	return nil
 }
-func (m *memRepo) ImportPeople(_ context.Context, _ int64, rows []domain.ImportRow) (int, []int, error) {
+func (m *memRepo) ResetPassword(_ context.Context, _ int64, id int64, _ string) error {
+	if _, ok := m.people[id]; !ok {
+		return domain.ErrNotFound
+	}
+	return nil
+}
+func (m *memRepo) ImportPeople(_ context.Context, _ int64, rows []domain.ImportRow) (int, []int, []int, error) {
 	m.imported = rows
-	return len(rows) - len(m.conflict), m.conflict, nil
+	var created []int
+	for _, r := range rows {
+		created = append(created, r.Line)
+	}
+	return len(rows) - len(m.conflict), m.conflict, created, nil
 }
 func (m *memRepo) SaveOrg(_ context.Context, o domain.Org) error { m.savedOrg = &o; return nil }
 
@@ -73,41 +83,41 @@ func isInvalid(err error, sub string) bool {
 
 func TestSaveRules(t *testing.T) {
 	s, repo := setup()
-	if err := s.Save(ctx, hse, domain.User{Name: "Берик", Phone: "8 702 111 22 33", Role: domain.RoleWorker, Active: true}); err != nil {
+	if err := s.Save(ctx, hse, domain.User{Name: "Берик", Phone: "8 702 111 22 33", IIN: "900101300047", Role: domain.RoleWorker, Active: true}); err != nil {
 		t.Fatal(err)
 	}
 	if repo.people[4].Phone != "77021112233" {
 		t.Fatalf("телефон нормализуется: %q", repo.people[4].Phone)
 	}
-	if err := s.Save(ctx, hse, domain.User{Name: "Дубль", Phone: "87010000003", Role: domain.RoleWorker}); !isInvalid(err, "уже есть") {
+	if err := s.Save(ctx, hse, domain.User{Name: "Дубль", Phone: "87010000003", IIN: "900101300057", Role: domain.RoleWorker}); !isInvalid(err, "уже есть") {
 		t.Fatalf("дубль телефона: %v", err)
 	}
 	if err := s.Save(ctx, hse, domain.User{Name: "X", Phone: "123", Role: domain.RoleWorker}); !isInvalid(err, "ФИО") {
 		t.Fatal("плохой телефон")
 	}
-	if err := s.Save(ctx, hse, domain.User{Name: "X", Phone: "77010000009", Role: domain.RoleAdmin}); !isInvalid(err, "администратор") {
+	if err := s.Save(ctx, hse, domain.User{Name: "X", Phone: "77010000009", IIN: "900101300067", Role: domain.RoleAdmin}); !isInvalid(err, "администратор") {
 		t.Fatal("инженер ОТ не может создать админа")
 	}
-	if err := s.Save(ctx, hse, domain.User{ID: 1, Name: "Админ", Phone: "77010000001", Role: domain.RoleWorker, Active: true}); !errors.Is(err, domain.ErrForbidden) {
+	if err := s.Save(ctx, hse, domain.User{ID: 1, Name: "Админ", Phone: "77010000001", IIN: "900101300017", Role: domain.RoleWorker, Active: true}); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatal("инженер ОТ не может редактировать админа")
 	}
-	if err := s.Save(ctx, admin, domain.User{ID: 1, Name: "Админ", Phone: "77010000001", Role: domain.RoleWorker, Active: true}); !isInvalid(err, "свою роль") {
+	if err := s.Save(ctx, admin, domain.User{ID: 1, Name: "Админ", Phone: "77010000001", IIN: "900101300017", Role: domain.RoleWorker, Active: true}); !isInvalid(err, "свою роль") {
 		t.Fatal("нельзя понизить себя")
 	}
-	if err := s.Save(ctx, admin, domain.User{ID: 1, Name: "Админ", Phone: "77010000001", Role: domain.RoleAdmin}); !isInvalid(err, "отключать себя") {
+	if err := s.Save(ctx, admin, domain.User{ID: 1, Name: "Админ", Phone: "77010000001", IIN: "900101300017", Role: domain.RoleAdmin}); !isInvalid(err, "отключать себя") {
 		t.Fatal("нельзя отключить себя")
 	}
-	if err := s.Save(ctx, admin, domain.User{ID: 99, Name: "X", Phone: "77010000099", Role: domain.RoleWorker}); !errors.Is(err, domain.ErrNotFound) {
+	if err := s.Save(ctx, admin, domain.User{ID: 99, Name: "X", Phone: "77010000099", IIN: "900101300077", Role: domain.RoleWorker}); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatal("сотрудник из чужой организации или несуществующий")
 	}
 }
 
 func TestParseCSV(t *testing.T) {
 	in := "\xef\xbb\xbfФИО;Телефон;ИИН;Год рождения;Должность;Подразделение;Объект\n" +
-		"Берик Оспанов;8 702 111 22 33;;1991;Сварщик;Сварочный участок;ЖК Алатау\n" +
+		"Берик Оспанов;8 702 111 22 33;900101300047;1991;Сварщик;Сварочный участок;ЖК Алатау\n" +
 		";;;;;;\n" +
 		"Без телефона;;;;;;\n" +
-		"Асель;+7 701 000 00 04;;abc\n"
+		"Асель;+7 701 000 00 04;900101300057;abc\n"
 	rows, errs, err := ParseCSV(strings.NewReader(in))
 	if err != nil {
 		t.Fatal(err)
@@ -124,7 +134,7 @@ func TestParseCSV(t *testing.T) {
 	}
 
 	// Запятая как разделитель, без заголовка
-	rows, _, _ = ParseCSV(strings.NewReader("Ерлан,87010000002,,1988,Монтажник,,\n"))
+	rows, _, _ = ParseCSV(strings.NewReader("Ерлан,87010000002,900101300067,1988,Монтажник,,\n"))
 	if len(rows) != 1 || rows[0].Name != "Ерлан" {
 		t.Fatalf("запятая: %+v", rows)
 	}
@@ -133,11 +143,11 @@ func TestParseCSV(t *testing.T) {
 func TestImportReportsConflicts(t *testing.T) {
 	s, repo := setup()
 	repo.conflict = []int{3}
-	res, err := s.Import(ctx, hse, strings.NewReader("А;87020000001\nБ;87020000002\nВ;87020000003\n"))
+	res, err := s.Import(ctx, hse, strings.NewReader("А;87020000001;900101300047\nБ;87020000002;900101300057\nВ;87020000003;900101300067\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Imported != 2 || len(res.Errors) != 1 || !strings.Contains(res.Errors[0], "Строка 3: телефон занят") {
+	if res.Imported != 2 || len(res.Errors) != 1 || !strings.Contains(res.Errors[0], "Строка 3: телефон или ИИН") {
 		t.Fatalf("%+v", res)
 	}
 }

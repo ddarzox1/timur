@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -68,7 +69,7 @@ func setupWith(t *testing.T, fs httpdelivery.FileServer) env {
 	}
 	hz := hazard.New(store, store, files)
 	h := httpdelivery.New(httpdelivery.Services{
-		Auth:       auth.New(store, nopSMS{}, "1111"),
+		Auth:       auth.New(store),
 		Hazards:    hz,
 		Inductions: induction.New(store, store, files, nopSMS{}, pdfinfra.Protocol{}, sigex.NewFake(), "http://test"),
 		Checklists: checklist.New(store, store, files, hz),
@@ -81,8 +82,8 @@ func setupWith(t *testing.T, fs httpdelivery.FileServer) env {
 	return env{srv: srv, db: pool}
 }
 
-// newUser создаёт организацию (или использует orgID) и сотрудника; возвращает телефон.
-func (e env) newUser(t *testing.T, orgID *int64, role string) (phone string, org int64) {
+// newUser creates an organization (or uses orgID) and returns the login IIN.
+func (e env) newUser(t *testing.T, orgID *int64, role string) (iin string, org int64) {
 	t.Helper()
 	if orgID == nil {
 		if err := e.db.QueryRow(ctx, `INSERT INTO orgs (name) VALUES ('Тест') RETURNING id`).Scan(&org); err != nil {
@@ -91,11 +92,28 @@ func (e env) newUser(t *testing.T, orgID *int64, role string) (phone string, org
 	} else {
 		org = *orgID
 	}
-	phone = fmt.Sprintf("778%08d", rand.IntN(100_000_000))
-	if _, err := e.db.Exec(ctx, `INSERT INTO users (org_id, phone, name, role) VALUES ($1, $2, 'Тест', $3)`, org, phone, role); err != nil {
+	phone := fmt.Sprintf("778%08d", rand.IntN(100_000_000))
+	iin = randomIIN()
+	passwordHash, err := auth.HashPassword("Test1234")
+	if err != nil {
 		t.Fatal(err)
 	}
-	return phone, org
+	if _, err := e.db.Exec(ctx, `INSERT INTO users (org_id, phone, iin, name, role, password_hash) VALUES ($1, $2, $3, 'Тест', $4, $5)`, org, phone, iin, role, passwordHash); err != nil {
+		t.Fatal(err)
+	}
+	return iin, org
+}
+
+func randomIIN() string {
+	for {
+		base := fmt.Sprintf("%011d", rand.Int64N(100_000_000_000))
+		for d := 0; d < 10; d++ {
+			candidate := base + strconv.Itoa(d)
+			if domain.ValidIIN(candidate) {
+				return candidate
+			}
+		}
+	}
 }
 
 func client() *http.Client {
@@ -103,13 +121,12 @@ func client() *http.Client {
 	return &http.Client{Jar: jar, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 }
 
-func (e env) login(t *testing.T, phone string) *http.Client {
+func (e env) login(t *testing.T, iin string) *http.Client {
 	t.Helper()
 	c := client()
-	e.post(t, c, "/login/phone", url.Values{"phone": {phone}})
-	res := e.post(t, c, "/login/code", url.Values{"phone": {phone}, "code": {"1111"}})
+	res := e.post(t, c, "/login", url.Values{"iin": {iin}, "password": {"Test1234"}})
 	if res.StatusCode != http.StatusSeeOther {
-		t.Fatalf("вход %s: %d", phone, res.StatusCode)
+		t.Fatalf("вход %s: %d", iin, res.StatusCode)
 	}
 	return c
 }
@@ -148,9 +165,8 @@ func TestLoginAndRoles(t *testing.T) {
 	}
 
 	c := client()
-	e.post(t, c, "/login/phone", url.Values{"phone": {hsePhone}})
-	if res := e.post(t, c, "/login/code", url.Values{"phone": {hsePhone}, "code": {"0000"}}); res.StatusCode != http.StatusOK {
-		t.Fatalf("неверный код — форма с ошибкой, получили %d", res.StatusCode)
+	if res := e.post(t, c, "/login", url.Values{"iin": {hsePhone}, "password": {"wrong"}}); res.StatusCode != http.StatusOK {
+		t.Fatalf("неверный пароль — форма с ошибкой, получили %d", res.StatusCode)
 	}
 	if res, _ := e.get(t, c, "/admin"); res.StatusCode != http.StatusSeeOther {
 		t.Fatal("неверный код не должен впускать")
@@ -161,7 +177,7 @@ func TestLoginAndRoles(t *testing.T) {
 		t.Fatalf("инженер ОТ → дашборд: %d", res.StatusCode)
 	}
 	var lastSeen *time.Time
-	if err := e.db.QueryRow(ctx, `SELECT last_seen_at FROM users WHERE phone=$1`, hsePhone).Scan(&lastSeen); err != nil || lastSeen == nil {
+	if err := e.db.QueryRow(ctx, `SELECT last_seen_at FROM users WHERE iin=$1`, hsePhone).Scan(&lastSeen); err != nil || lastSeen == nil {
 		t.Fatalf("middleware должен обновить last_seen_at: %v %v", lastSeen, err)
 	}
 	if res, _ := e.get(t, hse, "/admin/settings"); res.StatusCode != http.StatusForbidden {
@@ -373,7 +389,7 @@ func TestPhoneStoredRawShownFormatted(t *testing.T) {
 	n := rand.IntN(10_000_000)
 	masked := fmt.Sprintf("+7 776 %03d %02d %02d", n/10000, n/100%100, n%100)
 	stored := fmt.Sprintf("7776%07d", n)
-	if res := e.post(t, c, "/admin/people/save", url.Values{"name": {"Берик"}, "phone": {masked}, "role": {"worker"}, "active": {"1"}}); res.StatusCode != http.StatusSeeOther {
+	if res := e.post(t, c, "/admin/people/save", url.Values{"name": {"Берик"}, "phone": {masked}, "iin": {randomIIN()}, "role": {"worker"}, "active": {"1"}}); res.StatusCode != http.StatusOK {
 		t.Fatalf("сохранение: %d", res.StatusCode)
 	}
 	var got string

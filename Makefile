@@ -18,7 +18,7 @@ up: env ## Запустить всё в Docker: приложение + Postgres
 	docker compose up -d --build
 	@echo ""
 	@echo "  Готово: http://localhost:8080"
-	@code=$$(sed -n 's/^FIXED_OTP=//p' .env); echo "  Вход:   +7 701 000 00 01 (админ) или …02 (сотрудник), код $${code:-из логов: make logs}"
+	@echo "  Вход:   ИИН 900101300017 (админ) или 900101300027 (сотрудник), пароль Demo1234"
 
 up-s3: env ## Разработка с S3: Postgres + локальный S3 (SeaweedFS) в Docker, приложение на хосте
 	docker compose --profile s3 up -d --wait db s3

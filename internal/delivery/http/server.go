@@ -72,8 +72,7 @@ func (h *Handler) Routes() http.Handler {
 	m.Handle("POST /pilot", h.public(h.pilotRequest))
 	m.Handle("GET /lang/{l}", h.public(h.setLang))
 	m.Handle("GET /login", h.public(h.loginPage))
-	m.Handle("POST /login/phone", h.public(h.loginPhone))
-	m.Handle("POST /login/code", h.public(h.loginCode))
+	m.Handle("POST /login", h.public(h.login))
 	m.Handle("POST /logout", anyone(h.logout))
 	m.Handle("GET /files/{org}/{name}", anyone(h.file))
 
@@ -94,6 +93,7 @@ func (h *Handler) Routes() http.Handler {
 	m.Handle("GET /m/checklists/{id}", anyone(h.mChecklistRun))
 	m.Handle("POST /m/checklists/{id}", anyone(h.mChecklistSubmit))
 	m.Handle("GET /m/profile", anyone(h.mProfile))
+	m.Handle("POST /m/profile/password", anyone(h.mPasswordChange))
 
 	// Инженер ОТ / админ
 	m.Handle("GET /admin", backoffice(h.adminDashboard))
@@ -132,6 +132,7 @@ func (h *Handler) Routes() http.Handler {
 	m.Handle("POST /admin/people/import", orgwide(h.peopleImport))
 	m.Handle("GET /admin/people/{id}", backoffice(h.personEdit))
 	m.Handle("POST /admin/people/save", orgwide(h.personSave))
+	m.Handle("POST /admin/people/{id}/password", orgwide(h.personPasswordReset))
 	m.Handle("GET /admin/org", backoffice(h.org))
 	m.Handle("POST /admin/org/departments", orgwide(h.departmentSave))
 	m.Handle("POST /admin/org/departments/{id}/delete", orgwide(h.departmentDelete))

@@ -22,34 +22,17 @@ func (h *Handler) loginPage(w http.ResponseWriter, r *http.Request, u domain.Use
 	if u.ID != 0 {
 		return redirect(w, r, homeFor(u))
 	}
-	return render(w, r, "login", map[string]any{"Step": "phone"})
+	return render(w, r, "login", nil)
 }
 
-// Ошибки валидации на шагах входа показываем внутри формы, а не всплывающим сообщением.
-func (h *Handler) loginForm(w http.ResponseWriter, r *http.Request, data map[string]any, err error) error {
-	var ve domain.ValidationError
-	if err != nil && !errors.As(err, &ve) {
-		return err
-	}
+func (h *Handler) login(w http.ResponseWriter, r *http.Request, _ domain.User) error {
+	token, u, err := h.auth.Login(r.Context(), r.FormValue("iin"), r.FormValue("password"))
 	if err != nil {
-		data["Error"] = string(ve)
-	}
-	data["Fixed"] = h.auth.FixedCode()
-	return renderBlock(w, r, "login", "form", data)
-}
-
-func (h *Handler) loginPhone(w http.ResponseWriter, r *http.Request, _ domain.User) error {
-	res, err := h.auth.RequestCode(r.Context(), r.FormValue("phone"))
-	if err != nil {
-		return h.loginForm(w, r, map[string]any{"Step": "phone", "Phone": r.FormValue("phone")}, err)
-	}
-	return h.loginForm(w, r, map[string]any{"Step": "code", "Phone": res.Phone, "Wait": res.Wait}, nil)
-}
-
-func (h *Handler) loginCode(w http.ResponseWriter, r *http.Request, _ domain.User) error {
-	token, u, err := h.auth.VerifyCode(r.Context(), r.FormValue("phone"), r.FormValue("code"))
-	if err != nil {
-		return h.loginForm(w, r, map[string]any{"Step": "code", "Phone": domain.NormalizePhone(r.FormValue("phone"))}, err)
+		var ve domain.ValidationError
+		if !errors.As(err, &ve) {
+			return err
+		}
+		return render(w, r, "login", map[string]any{"IIN": domain.NormalizeIIN(r.FormValue("iin")), "Error": string(ve)})
 	}
 	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: token, Path: "/", HttpOnly: true, SameSite: http.SameSiteLaxMode,
 		Secure: h.opt.CookieSecure, MaxAge: int(auth.SessionTTL.Seconds())})
@@ -83,7 +66,7 @@ func (h *Handler) setLang(w http.ResponseWriter, r *http.Request, _ domain.User)
 	return nil
 }
 
-// sameHostBack — путь, откуда пришёл пользователь, только если это наш сайт (иначе open redirect).
+// sameHostBack returns the referring path only for this host (prevents open redirects).
 func sameHostBack(r *http.Request) string {
 	ref, err := url.Parse(r.Referer())
 	if err != nil || ref.Host != r.Host || !strings.HasPrefix(ref.Path, "/") || strings.HasPrefix(ref.Path, "//") {
@@ -92,7 +75,6 @@ func sameHostBack(r *http.Request) string {
 	return (&url.URL{Path: ref.Path, RawQuery: ref.RawQuery}).String()
 }
 
-// file отдаёт загрузки только сотрудникам той же организации.
 func (h *Handler) file(w http.ResponseWriter, r *http.Request, u domain.User) error {
 	if r.PathValue("org") != strconv.FormatInt(u.OrgID, 10) {
 		return domain.ErrNotFound
