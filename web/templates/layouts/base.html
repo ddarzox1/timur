@@ -31,9 +31,6 @@
     <a href="/admin/journals/print" target="_blank" hx-boost="false">{{template "i" "file"}}{{t "Отчёты"}}</a>
     <a href="/admin/org" {{if eq .Path "/admin/org"}}class="on"{{end}}>{{template "i" "org"}}{{t "Справочники"}}</a>
     {{if eq .Me.Role "admin"}}<a href="/admin/settings" {{if eq .Path "/admin/settings"}}class="on"{{end}}>{{template "i" "settings"}}{{t "Настройки"}}</a>{{end}}
-    <div class="group">{{t "Безопасность"}}</div>
-    <a href="/admin/hazards" {{if eq .Path "/admin/hazards"}}class="on"{{end}}>{{template "i" "hazard"}}{{t "Опасности"}}</a>
-    <a href="/admin/checklists" {{if eq .Path "/admin/checklists"}}class="on"{{end}}>{{template "i" "checklist"}}{{t "Чек-листы"}}</a>
     <a href="/m">{{template "i" "phone"}}{{t "Мобильная версия"}}</a>
   </nav>
   <div>
@@ -57,9 +54,6 @@
 <div class="mobile"><div class="pad">{{template "content" .}}</div></div>
 <nav class="tabbar">
   <a href="/m" {{if eq .Path "/m"}}class="on"{{end}}><span class="ic">{{template "i" "home"}}</span>{{t "Главная"}}</a>
-  <a href="/m/hazards" {{if eq .Path "/m/hazards"}}class="on"{{end}}><span class="ic">{{template "i" "hazard"}}</span>{{t "Опасности"}}</a>
-  <a href="/m/hazards/new" class="plus" aria-label="{{t "Сообщить об опасности"}}"><span class="ic">{{template "i" "plus"}}</span></a>
-  <a href="/m/checklists" {{if eq .Path "/m/checklists"}}class="on"{{end}}><span class="ic">{{template "i" "checklist"}}</span>{{t "Чек-листы"}}</a>
   <a href="/m/profile" {{if eq .Path "/m/profile"}}class="on"{{end}}><span class="ic">{{template "i" "user"}}</span>{{t "Профиль"}}</a>
 </nav>
 </body></html>{{end}}

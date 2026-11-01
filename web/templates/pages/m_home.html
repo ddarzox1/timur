@@ -20,28 +20,4 @@
 {{end}}
 {{if .Pending}}</div>{{end}}
 
-<h2>{{t "Мои чек-листы на сегодня"}}</h2>
-{{if .Checklists}}<div class="card">{{end}}
-{{range .Checklists}}
-<a class="item" href="/m/checklists/{{.ID}}">
-  <span class="ic">{{template "i" "checklist"}}</span>
-  <span class="grow"><b>{{.Title}}</b><br><span class="muted small">{{.Questions}} · {{t (freq .Frequency)}}</span></span>
-  {{if .DoneToday}}<span class="badge ok">{{t "Выполнено сегодня"}}</span>{{else}}<span class="muted">{{template "i" "chevron-right"}}</span>{{end}}
-</a>
-{{else}}
-<p class="muted">{{t "Нет чек-листов"}}</p>
-{{end}}
-{{if .Checklists}}</div>{{end}}
-
-<h2>{{t "Мои опасности"}}</h2>
-<div class="card"><a class="item" href="/m/hazards">
-  <span class="ic">{{template "i" "hazard"}}</span>
-  <span class="grow row">
-    <span class="badge open">{{t "открыто"}}: {{.Open}}</span>
-    <span class="badge fixed">{{t "устранено"}}: {{.Fixed}}</span>
-    {{if .Mine}}<span class="badge warn">{{t "Назначено мне"}}: {{.Mine}}</span>{{end}}
-  </span>
-  <span class="muted">{{template "i" "chevron-right"}}</span>
-</a></div>
-<div style="margin-top:var(--s5)"><a class="btn accent big" href="/m/hazards/new">{{template "i" "hazard"}}{{t "Сообщить об опасности"}}</a></div>
 {{end}}

@@ -13,7 +13,7 @@
   <section class="hero">
     <div>
       <h1>Охрана труда без бумажных журналов</h1>
-      <p class="muted" style="font-size:1.15rem">Инструктажи с подписью с телефона, опасности и осмотры в одном месте. Журналы готовы к проверке инспекции труда в любой момент.</p>
+      <p class="muted" style="font-size:1.15rem">Инструктажи с подписью с телефона. Журналы готовы к проверке инспекции труда в любой момент.</p>
       <div class="row" style="margin-top:1.5rem">
         <a class="btn accent" href="#pilot" hx-boost="false" style="min-height:52px;padding:0 1.5rem">Попробовать бесплатно</a>
         <a class="btn" href="/login" style="min-height:52px;padding:0 1.5rem">Войти</a>
@@ -35,17 +35,14 @@
     <h2>Знакомо?</h2>
     <div class="grid">
       <div class="card"><h3>{{template "i" "journal"}} Бумажные журналы</h3><p class="muted">Теряются, заполняются задним числом, подписи собирают перед проверкой.</p></div>
-      <div class="card"><h3>{{template "i" "hazard"}} Об опасностях молчат</h3><p class="muted">Рабочие видят нарушения, но сообщить некому, а сообщённое не устраняется.</p></div>
       <div class="card"><h3>{{template "i" "status-overdue"}} Штрафы при проверке</h3><p class="muted">Нет подписи в журнале — нарушение. Несчастный случай — расследование и ответственность.</p></div>
     </div>
   </section>
 
   <section class="section">
-    <h2>Три модуля, которые закрывают основное</h2>
+    <h2>Что умеет Qauipsiz</h2>
     <div class="grid">
       <div class="card"><h3>{{template "i" "sign"}} Инструктажи</h3><p class="muted">Вводный, первичный, повторный, внеплановый, целевой. Сотрудник читает и расписывается пальцем, с отметкой времени и геолокации. Напоминания о повторных.</p></div>
-      <div class="card"><h3>{{template "i" "hazard"}} Опасности</h3><p class="muted">Фото → категория → ответственный → срок. Устранение подтверждается фото «после». Ничего не теряется.</p></div>
-      <div class="card"><h3>{{template "i" "checklist"}} Чек-листы</h3><p class="muted">Ежедневные осмотры с телефона. Каждое «нет» сразу становится опасностью с ответственным.</p></div>
     </div>
   </section>
 
@@ -70,7 +67,7 @@
       <div class="card">
         <h2 style="margin-top:0">Цена</h2>
         <p style="font-size:2rem;font-weight:800;margin:.25rem 0">от {{money .Price}} ₸</p>
-        <p class="muted">за сотрудника в месяц. Все модули включены.</p>
+        <p class="muted">за сотрудника в месяц.</p>
         <p><span class="badge ok">Бесплатный пилот 30 дней</span></p>
       </div>
       <div class="card">{{template "pilot" .}}</div>

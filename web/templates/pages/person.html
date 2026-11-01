@@ -31,11 +31,6 @@
     {{range .Inductions}}<tr><td>{{.Title}}<div class="small muted">{{kind .Kind}}</div></td><td>{{template "assignBadge" .}}</td></tr>
     {{else}}<tr><td class="muted">Нет инструктажей</td></tr>{{end}}
   </tbody></table></div>
-  <h2>Опасности</h2>
-  <div class="table-wrap"><table><tbody>
-    {{range .Hazards}}<tr><td><a href="/admin/hazards/{{.ID}}">№{{.ID}} {{cat .Category}}</a></td><td>{{template "statusBadge" .}}</td></tr>
-    {{else}}<tr><td class="muted">Нет</td></tr>{{end}}
-  </tbody></table></div>
 </div>
 {{end}}
 </div>
