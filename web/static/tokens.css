@@ -1,0 +1,75 @@
+/* Qauipsiz · Wayfind tokens.
+   Гарнитура: IBM Plex Mono 400/500/700, self-hosted woff2, подмножества latin + cyrillic + cyrillic-ext.
+   Chivo Mono из темы заменён: в нём нет кириллицы вовсе, а интерфейс обязан нести ә ғ қ ң ө ұ ү һ і.
+   Plex Mono покрывает все 18 казахских букв и уже был в проекте. Дисплейный вес 700: у Plex Mono нет 800. */
+
+@font-face{font-family:"IBM Plex Mono";src:url(/static/fonts/plex-mono-400-cyrillic-ext.woff2) format("woff2");font-weight:400;font-display:swap;unicode-range:U+0460-052F,U+1C80-1C8A,U+20B4,U+2DE0-2DFF,U+A640-A69F,U+FE2E-FE2F}
+@font-face{font-family:"IBM Plex Mono";src:url(/static/fonts/plex-mono-400-cyrillic.woff2) format("woff2");font-weight:400;font-display:swap;unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116}
+@font-face{font-family:"IBM Plex Mono";src:url(/static/fonts/plex-mono-400-latin.woff2) format("woff2");font-weight:400;font-display:swap;unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:"IBM Plex Mono";src:url(/static/fonts/plex-mono-500-cyrillic-ext.woff2) format("woff2");font-weight:500;font-display:swap;unicode-range:U+0460-052F,U+1C80-1C8A,U+20B4,U+2DE0-2DFF,U+A640-A69F,U+FE2E-FE2F}
+@font-face{font-family:"IBM Plex Mono";src:url(/static/fonts/plex-mono-500-cyrillic.woff2) format("woff2");font-weight:500;font-display:swap;unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116}
+@font-face{font-family:"IBM Plex Mono";src:url(/static/fonts/plex-mono-500-latin.woff2) format("woff2");font-weight:500;font-display:swap;unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:"IBM Plex Mono";src:url(/static/fonts/plex-mono-700-cyrillic-ext.woff2) format("woff2");font-weight:700;font-display:swap;unicode-range:U+0460-052F,U+1C80-1C8A,U+20B4,U+2DE0-2DFF,U+A640-A69F,U+FE2E-FE2F}
+@font-face{font-family:"IBM Plex Mono";src:url(/static/fonts/plex-mono-700-cyrillic.woff2) format("woff2");font-weight:700;font-display:swap;unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116}
+@font-face{font-family:"IBM Plex Mono";src:url(/static/fonts/plex-mono-700-latin.woff2) format("woff2");font-weight:700;font-display:swap;unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+
+:root {
+  color-scheme: light dark;
+  --space-3xs: 2px; --space-2xs: 4px; --space-xs: 8px; --space-sm: 12px; --space-md: 16px; --space-lg: 24px; --space-xl: 40px; --space-2xl: 64px; --space-3xl: 96px; --space-4xl: 144px;
+  --text-xs: 0.8125rem; --text-sm: 0.875rem; --text-md: 1rem; --text-lg: 1.25rem; --text-xl: 1.5625rem; --text-2xl: 1.953rem; --text-3xl: 2.441rem;
+  --text-display-s: clamp(2.25rem, 4vw + 0.5rem, 3.75rem); --text-display: clamp(2.75rem, 5vw + 1rem, 5.25rem);
+  --text-section: clamp(2rem, 2.5vw + 1rem, 3.5rem); --text-title: clamp(1.25rem, 0.75vw + 0.875rem, 1.625rem); --text-lead: clamp(1.125rem, 0.35vw + 1rem, 1.375rem);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1); --ease-in: cubic-bezier(0.7, 0, 0.84, 0); --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-micro: 120ms; --dur-short: 220ms; --dur-long: 420ms;
+  --container: 1440px; --gutter: 64px; --gap-columns: 32px; --section-gap-s: 120px; --section-gap: 144px; --section-gap-l: 176px;
+  --z-base: 1; --z-raised: 10; --z-dropdown: 100; --z-sticky: 200; --z-sticky-nav: 300; --z-modal: 400; --z-toast: 500; --z-tooltip: 600;
+
+  /* Wayfind · colourway platform */
+  --color-paper: oklch(95.5% 0.006 250); --color-paper-2: oklch(91% 0.009 250); --color-paper-3: oklch(99.5% 0.005 250);
+  --color-ink: oklch(16% 0.014 262); --color-ink-2: oklch(29% 0.014 262); --color-muted: oklch(47% 0.016 260);
+  --color-rule: oklch(80% 0.011 250); --color-ink-rule: oklch(34% 0.014 262);
+  --color-accent: oklch(51% 0.22 264); --color-accent-2: oklch(81% 0.16 82); --color-accent-ink: oklch(99.5% 0.003 250); --color-focus: oklch(51% 0.22 264);
+  --font-display: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace; --font-body: var(--font-display); --font-outlier: var(--font-body);
+  --radius-card: 0; --radius-pill: 999px; --rule-hair: 1px; --rule-bar: 2px;
+  --shadow-card: 0 24px 40px -24px oklch(8% 0.01 260 / 0.6);
+  --tracking-display: -0.03em; --display-weight: 700;
+
+  /* Сигнальная семантика охраны труда. Тема даёт кобальт (живое) и янтарь (цифры на чернилах);
+     красный и зелёный добавлены осознанно: статус обязан читаться цветом и текстом, в том числе на солнце. */
+  --color-danger: oklch(48% 0.19 27); --color-danger-wash: oklch(93% 0.045 27); --color-danger-ink: oklch(99.5% 0.003 250);
+  --color-warn: oklch(52% 0.13 68); --color-warn-wash: oklch(94% 0.055 82); --color-warn-ink: oklch(99.5% 0.003 250);
+  --color-ok: oklch(45% 0.12 155); --color-ok-wash: oklch(93% 0.045 155); --color-ok-ink: oklch(99.5% 0.003 250);
+  --color-live: var(--color-accent); --color-live-wash: oklch(93% 0.045 264);
+  /* Кобальт для текста на светлой подложке: на AA тон темнее сигнального */
+  --color-accent-text: oklch(43% 0.21 264);
+  --color-shade: oklch(8% 0.01 260 / 0.6);
+  /* Печать: журнал по формам РК печатается Ч/Б. Чернила почти чёрные — на бумаге
+     неотличимо от #000, но тон держит ту же ось, что и экранная палитра. */
+  --print-ink: oklch(12% 0.005 262); --print-paper: oklch(100% 0 0);
+  --color-error: var(--color-danger); --color-success: var(--color-ok);
+
+  /* Плашка (меню, тост, выбранная ячейка): в светлой теме это чернила,
+     в тёмной — ступень ниже бумаги. Плашка остаётся плашкой в обеих темах. */
+  --color-slab: oklch(16% 0.014 262); --color-slab-ink: oklch(95.5% 0.006 250); --color-slab-2: oklch(29% 0.014 262); --color-slab-muted: oklch(68% 0.012 256);
+
+  /* Каркас приложения */
+  --side-w: 248px; --topbar-h: 60px; --tabbar-h: 64px; --tap: 48px;
+  --safe-b: env(safe-area-inset-bottom, 0px);
+}
+
+/* Wayfind · colourway night, по системной теме, без переключателя */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-paper: oklch(15% 0.012 262); --color-paper-2: oklch(19% 0.013 262); --color-paper-3: oklch(12% 0.011 262);
+    --color-ink: oklch(96% 0.005 250); --color-ink-2: oklch(83% 0.008 252); --color-muted: oklch(68% 0.012 256);
+    --color-rule: oklch(31% 0.014 262); --color-ink-rule: oklch(44% 0.016 262);
+    --color-accent: oklch(62% 0.2 264); --color-accent-2: oklch(84% 0.15 82); --color-accent-ink: oklch(12% 0.011 262); --color-focus: oklch(72% 0.16 264);
+    --shadow-card: 0 24px 40px -24px oklch(2% 0.01 260 / 0.8);
+    --color-danger: oklch(70% 0.17 27); --color-danger-wash: oklch(27% 0.08 27); --color-danger-ink: oklch(12% 0.011 262);
+    --color-warn: oklch(79% 0.14 75); --color-warn-wash: oklch(28% 0.07 75); --color-warn-ink: oklch(12% 0.011 262);
+    --color-ok: oklch(72% 0.14 155); --color-ok-wash: oklch(25% 0.06 155); --color-ok-ink: oklch(12% 0.011 262);
+    --color-live-wash: oklch(27% 0.08 264); --color-accent-text: oklch(76% 0.15 264);
+    --color-shade: oklch(2% 0.01 260 / 0.7);
+    --color-slab: oklch(10% 0.011 262); --color-slab-ink: oklch(96% 0.005 250); --color-slab-2: oklch(22% 0.013 262); --color-slab-muted: oklch(68% 0.012 256);
+  }
+}

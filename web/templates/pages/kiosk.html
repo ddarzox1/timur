@@ -1,7 +1,7 @@
 {{define "page"}}{{template "admin" .}}{{end}}
 {{define "title"}}QR-киоск{{end}}
 {{define "content"}}
-<div class="row between"><div><a href="/admin/assignments?batch={{.Batch}}">← Назначения</a><h1>QR-киоск</h1></div><a class="btn" href="{{.State.Doc.PDFPath}}" target="_blank">PDF-протокол</a></div>
+<div class="row between"><div><a href="/admin/assignments?batch={{.Batch}}">{{template "i" "chevron-left"}}Назначения</a><h1>QR-киоск</h1></div><a class="btn" href="{{.State.Doc.PDFPath}}" target="_blank">PDF-протокол</a></div>
 <div class="grid split">
   <div class="card">
     <h3>Партия {{.Batch}}</h3>

@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#131A2A">
+<meta name="theme-color" content="#0B0E14">
+<meta name="description" content="{{template "description" .}}">
 <link rel="manifest" href="/static/manifest.json">
 <link rel="icon" href="/static/icon.svg">
 <link rel="stylesheet" href="/static/app.css">
@@ -11,6 +12,8 @@
 <script src="/static/phone-mask.js" defer></script>
 <script src="/static/app.js" defer></script>
 {{end}}
+
+{{define "description"}}Qauipsiz: инструктажи с подписью сотрудника, журналы по формам РК и учёт опасностей на объектах.{{end}}
 
 {{define "langswitch"}}<span class="small"><a href="/lang/ru" {{if ne .Lang "kk"}}style="font-weight:700"{{end}}>RU</a> / <a href="/lang/kk" {{if eq .Lang "kk"}}style="font-weight:700"{{end}}>ҚАЗ</a></span>{{end}}
 

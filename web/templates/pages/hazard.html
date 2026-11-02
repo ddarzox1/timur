@@ -3,7 +3,8 @@
 {{define "content"}}
 <p><a href="/admin/hazards">‹ Все опасности</a></p>
 <div class="row between">
-  <h1>№{{.H.ID}} · {{cat .H.Category}}</h1>
+  <h1>{{cat .H.Category}}</h1>
+  <p class="muted small">№{{.H.ID}}</p>
   <button class="btn" onclick="print()">{{template "i" "printer"}}Печать</button>
 </div>
 <p class="row">{{template "statusBadge" .H}} {{template "riskBadge" .H.Risk}} <span class="muted small">{{datetime .H.CreatedAt}} · {{or .H.Author "Аноним"}}</span></p>

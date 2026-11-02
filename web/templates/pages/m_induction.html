@@ -1,7 +1,6 @@
 {{define "page"}}{{template "mobile" .}}{{end}}
 {{define "title"}}{{.A.TitleIn .Lang}}{{end}}
 {{define "content"}}
-<a href="/m">{{template "i" "chevron-left"}}{{t "Назад"}}</a>
 {{if .A.SignedAt}}
 <div class="done-screen">
   <span class="ic">{{template "i" "check"}}</span>
@@ -12,7 +11,10 @@
   <a class="btn primary big" href="/m">{{t "Главная"}}</a>
 </div>
 {{else}}
-<h1 style="margin-top:.75rem">{{.A.TitleIn .Lang}}</h1>
+<div class="mhead">
+  <a href="/m" aria-label="{{t "Назад"}}">{{template "i" "chevron-left"}}</a>
+  <h1>{{.A.TitleIn .Lang}}</h1>
+</div>
 <p class="row small"><span class="badge info">{{t (kind .A.Kind)}}</span> {{template "assignBadge" .A}} {{with .A.Instructor}}<span class="muted">{{t "Проводит"}}: {{.}}</span>{{end}}</p>
 {{with .A.Reason}}<p class="muted small">Причина: {{.}}</p>{{end}}
 {{if .T.Body}}<div class="doc" tabindex="0">{{.T.Body}}</div>{{end}}
@@ -21,7 +23,7 @@
 {{if .OpID}}
 <div hx-get="/m/inductions/{{.A.ID}}/egov/{{.OpID}}" hx-trigger="load" hx-swap="outerHTML"><span class="muted">Готовим eGov mobile…</span></div>
 {{else}}
-<form method="post" action="/m/inductions/{{.A.ID}}/egov"><button class="btn accent big" type="submit">Подписать в eGov mobile</button></form>
+<form class="sticky-bottom" method="post" action="/m/inductions/{{.A.ID}}/egov"><button class="btn accent big" type="submit">{{template "i" "sign"}}Подписать в eGov mobile</button></form>
 {{end}}
 {{end}}
 {{end}}
@@ -31,9 +33,9 @@
 {{if .Op.Error}}<div class="error">{{.Op.Error}}</div><a class="btn" href="/m/inductions/{{.ID}}">Попробовать снова</a>
 {{else if .Op.Done}}<div class="success">Документ подписан: {{.Op.SignedBy}}</div><a class="btn primary" href="/m/inductions/{{.ID}}">Готово</a>
 {{else}}
-  <h3>Откройте eGov mobile</h3>
+  <h2>Откройте eGov mobile</h2>
   {{with .Op.LaunchLink}}<p><a class="btn accent big" href="{{.}}" hx-boost="false">Перейти в eGov mobile</a></p>{{end}}
-  {{with .Op.QRCode}}<img style="max-width:260px" src="data:image/png;base64,{{.}}" alt="QR для eGov mobile">{{end}}
+  {{with .Op.QRCode}}<img class="qr" src="data:image/png;base64,{{.}}" alt="QR для eGov mobile">{{end}}
   <p class="muted">Ожидаем подпись…</p>
   <form hx-post="/m/inductions/{{.ID}}/egov/{{.Op.ID}}/fake" hx-target="closest .card" hx-swap="outerHTML"><button class="btn" type="submit">Симулировать подпись (fake)</button></form>
 {{end}}

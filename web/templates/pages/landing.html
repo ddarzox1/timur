@@ -1,5 +1,6 @@
 {{define "page"}}{{template "public" .}}{{end}}
 {{define "title"}}Qauipsiz — охрана труда без бумажных журналов{{end}}
+{{define "description"}}Инструктажи с подписью сотрудника с телефона и журналы по формам Правил РК, готовые к проверке инспекции труда.{{end}}
 {{define "content"}}
 <div class="public">
   <nav class="pnav">
@@ -11,39 +12,42 @@
   </nav>
 
   <section class="hero">
-    <div>
-      <h1>Охрана труда без бумажных журналов</h1>
-      <p class="muted" style="font-size:1.15rem">Инструктажи с подписью с телефона. Журналы готовы к проверке инспекции труда в любой момент.</p>
-      <div class="row" style="margin-top:1.5rem">
-        <a class="btn accent" href="#pilot" hx-boost="false" style="min-height:52px;padding:0 1.5rem">Попробовать бесплатно</a>
-        <a class="btn" href="/login" style="min-height:52px;padding:0 1.5rem">Войти</a>
-      </div>
+    <h1>Охрана труда без бумажных журналов</h1>
+    <p class="lead">Сотрудник подписывает инструктаж с телефона, журнал готов к проверке.</p>
+    <div class="row hero-actions">
+      <a class="btn accent big" href="#pilot" hx-boost="false">Попробовать бесплатно</a>
+      <a class="btn big" href="/login">Войти</a>
     </div>
-    <div class="phone" aria-hidden="true">
-      <div class="small muted">Повторный инструктаж</div>
-      <h3>Работа на высоте</h3>
-      <div class="doc" style="max-height:120px;font-size:.85rem">1. Применять страховочную привязь, закреплённую к анкерной точке.
-2. Перед началом работ осмотреть леса и ограждения…</div>
-      <p class="check small" style="margin:.75rem 0">☑ Я ознакомлен(а) и понял(а) требования</p>
-      <svg viewBox="0 0 260 70" style="background:#fff;border-radius:10px;width:100%"><path d="M15 50c20-35 30-35 35 0s20-40 35-10 25 10 40-5 30 20 50 0 30-10 60-5" stroke="#0f2a4a" stroke-width="3" fill="none" stroke-linecap="round"/></svg>
-      <p><span class="badge ok">Вы на объекте ЖК Алатау</span></p>
-      <div class="btn accent big">Подписать</div>
-    </div>
+    <figure class="shot shot-wide">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="/static/img/admin-hazards-dark.png">
+        <img src="/static/img/admin-hazards.png" alt="Реестр опасностей: риск, объект, ответственный, срок и статус каждой записи" width="1440" height="900">
+      </picture>
+      <figcaption>Реестр опасностей: риск, срок и статус у каждой записи</figcaption>
+    </figure>
   </section>
 
   <section class="section">
     <h2>Знакомо?</h2>
     <div class="grid">
-      <div class="card"><h3>{{template "i" "journal"}} Бумажные журналы</h3><p class="muted">Теряются, заполняются задним числом, подписи собирают перед проверкой.</p></div>
-      <div class="card"><h3>{{template "i" "status-overdue"}} Штрафы при проверке</h3><p class="muted">Нет подписи в журнале — нарушение. Несчастный случай — расследование и ответственность.</p></div>
+      <div class="card"><h3>{{template "i" "journal"}}Бумажные журналы</h3><p class="muted">Теряются, заполняются задним числом, подписи собирают перед проверкой.</p></div>
+      <div class="card"><h3>{{template "i" "status-overdue"}}Штрафы при проверке</h3><p class="muted">Нет подписи в журнале — нарушение. Несчастный случай — расследование и ответственность.</p></div>
     </div>
   </section>
 
-  <section class="section">
-    <h2>Что умеет Qauipsiz</h2>
-    <div class="grid">
-      <div class="card"><h3>{{template "i" "sign"}} Инструктажи</h3><p class="muted">Вводный, первичный, повторный, внеплановый, целевой. Сотрудник читает и расписывается пальцем, с отметкой времени и геолокации. Напоминания о повторных.</p></div>
+  <section class="section split-shot">
+    <div>
+      <h2>Что умеет Qauipsiz</h2>
+      <h3>{{template "i" "sign"}}Инструктажи</h3>
+      <p class="muted">Вводный, первичный, повторный, внеплановый, целевой. Сотрудник читает и расписывается пальцем, с отметкой времени и геолокации. Напоминания о повторных.</p>
     </div>
+    <figure class="shot phone">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="/static/img/m-induction-dark.png">
+        <img src="/static/img/m-induction.png" alt="Экран сотрудника: инструктаж со статусом «Просрочено» и действием «Подписать» внизу экрана" width="390" height="844" loading="lazy">
+      </picture>
+      <figcaption>Экран сотрудника: статус инструктажа сверху, подпись внизу, в зоне большого пальца</figcaption>
+    </figure>
   </section>
 
   <section class="section">
@@ -55,18 +59,16 @@
     </div>
   </section>
 
-  <section class="section">
-    <div class="card" style="background:var(--nav);color:var(--nav-ink);border:0">
-      <h2 style="margin-top:0">Соответствие требованиям РК</h2>
-      <p>Журналы по формам Правил обучения, инструктирования и проверок знаний по вопросам безопасности и охраны труда. Данные хранятся в Казахстане. Интерфейс на русском и казахском.</p>
-    </div>
+  <section class="section band-ink">
+    <h2>Соответствие требованиям РК</h2>
+    <p>Журналы по формам Правил обучения, инструктирования и проверок знаний по вопросам безопасности и охраны труда. Данные хранятся в Казахстане. Интерфейс на русском и казахском.</p>
   </section>
 
   <section class="section" id="pilot">
     <div class="grid">
-      <div class="card">
-        <h2 style="margin-top:0">Цена</h2>
-        <p style="font-size:2rem;font-weight:800;margin:.25rem 0">от {{money .Price}} ₸</p>
+      <div class="card price">
+        <h2>Цена</h2>
+        <p class="figure">от {{money .Price}} ₸</p>
         <p class="muted">за сотрудника в месяц.</p>
         <p><span class="badge ok">Бесплатный пилот 30 дней</span></p>
       </div>
@@ -74,9 +76,15 @@
     </div>
   </section>
 
-  <footer class="section row between muted small">
-    <span>© Qauipsiz · info@qauipsiz.kz · +7 700 000 00 00</span>
-    <span>Политика конфиденциальности · {{template "langswitch" .}}</span>
+  <footer class="section pfoot">
+    <p><b>Qauipsiz</b></p>
+    <p class="muted">Инструктажи, журналы и опасности на объектах. Алматы, Казахстан.</p>
+    <p><a href="mailto:info@qauipsiz.kz">info@qauipsiz.kz</a></p>
+    <p class="row between small muted">
+      <span>© Qauipsiz</span>
+      <span>Политика конфиденциальности</span>
+      {{template "langswitch" .}}
+    </p>
   </footer>
 </div>
 {{end}}
@@ -84,11 +92,11 @@
 {{define "pilot"}}
 <div id="pilot-form">
 {{if .Sent}}
-  <h2 style="margin-top:0">Заявка отправлена ✓</h2>
+  <h2>Заявка отправлена</h2>
   <p class="muted">Мы позвоним в течение рабочего дня и подключим пилот.</p>
 {{else}}
   <form hx-post="/pilot" hx-target="#pilot-form" hx-swap="outerHTML">
-    <h2 style="margin-top:0">Заявка на пилот</h2>
+    <h2>Заявка на пилот</h2>
     {{with .Error}}<div class="error">{{.}}</div>{{end}}
     <div class="field"><label for="company">Компания</label><input id="company" name="company" required></div>
     <div class="field"><label for="pname">ФИО</label><input id="pname" name="name" required></div>

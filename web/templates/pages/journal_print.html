@@ -1,6 +1,8 @@
 {{define "page"}}<!doctype html>
 <html lang="ru"><head><meta charset="utf-8"><title>{{if .Workplace}}Журнал регистрации инструктажа на рабочем месте{{else}}Журнал регистрации вводного инструктажа{{end}}</title>
 <style>
+  /* Hallmark · форма журнала по Правилам РК вне системы темы: Times New Roman и чистый
+   * чёрный на белом — требование печатного документа, а не палитра. Токены сюда не идут. */
   @page { size: A4 landscape; margin: 12mm; }
   body { font: 11px/1.35 "Times New Roman", serif; color: #000; background: #fff; margin: 0; padding: 12mm; }
   .title-page { height: 170mm; display: flex; flex-direction: column; justify-content: center; text-align: center; page-break-after: always; }
@@ -21,7 +23,7 @@
   <p>{{.Me.OrgName}}</p>
   <h1>Журнал регистрации {{if .Workplace}}инструктажа на рабочем месте{{else}}вводного инструктажа{{end}}<br>по безопасности и охране труда</h1>
   {{if .Rows}}<p>Начат: {{date (index .Rows 0).SignedAt}}</p><p>Окончен: {{date (index .Rows (sub (len .Rows) 1)).SignedAt}}</p>{{end}}
-  <p class="small">Сформирован в электронном виде · Qauipsiz</p>
+  <p class="small">Сформирован в электронном виде, Qauipsiz</p>
 </div>
 <table>
   <thead><tr>

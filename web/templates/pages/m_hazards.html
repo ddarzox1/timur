@@ -10,8 +10,9 @@
 {{range .Hazards}}
 <a class="item {{if .Overdue}}overdue{{end}}" href="/m/hazards/{{.ID}}">
   {{if and .Photo (not (hasSuffix .Photo ".mp4"))}}<img class="thumb" src="{{.Photo}}" alt="">{{else}}<span class="ic">{{template "i" (catIcon .Category)}}</span>{{end}}
-  <span class="grow"><b>№{{.ID}} · {{t (cat .Category)}}</b><br>
-    <span class="small muted">{{date .CreatedAt}}{{with .Location}} · {{.}}{{end}}</span><br>
+  <span class="grow">
+    <b>{{t (cat .Category)}}</b> <span class="small muted">№{{.ID}}</span><br>
+    <span class="small muted">{{date .CreatedAt}}</span>{{with .Location}}<br><span class="small muted">{{.}}</span>{{end}}<br>
     {{template "statusBadge" .}}</span>
   <span class="muted">{{template "i" "chevron-right"}}</span>
 </a>
