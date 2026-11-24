@@ -15,7 +15,8 @@ const assignmentSelect = `SELECT a.id, a.template_id, a.user_id, a.batch, a.reas
 	coalesce(d.name, '') AS department, coalesce(i.name, '') AS instructor, coalesce(i.position, '') AS instructor_pos,
 	coalesce(u.iin, '') AS user_iin, a.iin, a.signer_name, a.cms, a.sigex_sign_id,
 	ed.instructor_signed_at, coalesce(ed.instructor_iin, '') AS instructor_signer_iin,
-	coalesce(ed.instructor_name, '') AS instructor_signer_name, coalesce(ed.sigex_id, '') AS sigex_id
+	coalesce(ed.instructor_name, '') AS instructor_signer_name, coalesce(ed.sigex_id, '') AS sigex_id,
+	a.internship_shifts, a.internship_from, a.internship_to, a.admitted_at, a.admitted_by_name
 	FROM induction_assignments a JOIN induction_templates t ON t.id = a.template_id JOIN users u ON u.id = a.user_id
 	LEFT JOIN departments d ON d.id = u.department_id LEFT JOIN users i ON i.id = a.instructor_id
 	LEFT JOIN locations al ON al.id = a.location_id
@@ -56,6 +57,28 @@ func (s *Store) SignAssignment(ctx context.Context, userID, id int64, sig domain
 	tag, err := s.db.Exec(ctx, `UPDATE induction_assignments SET signed_at = now(), signature = $3, selfie_path = $4, lat = $5, lng = $6, geo_ok = $7
 		WHERE id = $1 AND user_id = $2 AND signed_at IS NULL`, id, userID, sig.Image, sig.Selfie, sig.Lat, sig.Lng, sig.GeoOK)
 	return tag.RowsAffected() == 1, err
+}
+
+// AdmitAssignment записывает стажировку и допуск; область видимости та же, что у BatchAssignments.
+func (s *Store) AdmitAssignment(ctx context.Context, viewer domain.User, id int64, in domain.AdmitInput, byName string) error {
+	deps, err := s.scopeDepts(ctx, viewer)
+	if err != nil {
+		return err
+	}
+	tag, err := s.db.Exec(ctx, `UPDATE induction_assignments a SET internship_shifts = $3, internship_from = $4, internship_to = $5,
+		admitted_at = now(), admitted_by = $6, admitted_by_name = $7
+		FROM induction_templates t, users u
+		WHERE a.id = $1 AND a.org_id = $2 AND t.id = a.template_id AND u.id = a.user_id
+		AND t.kind = 'primary' AND a.signed_at IS NOT NULL AND a.admitted_at IS NULL
+		AND ($8::bigint[] IS NULL OR u.department_id = ANY($8) OR ($9 = 'instructor' AND a.instructor_id = $6))`,
+		id, viewer.OrgID, in.Shifts, in.From, in.To, viewer.ID, byName, deps, viewer.Role)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrNotFound
+	}
+	return nil
 }
 
 func (s *Store) UsersForAssignment(ctx context.Context, viewer domain.User, userIDs []int64) ([]domain.User, error) {

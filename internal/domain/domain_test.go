@@ -151,3 +151,32 @@ func TestFormatPhone(t *testing.T) {
 		t.Fatal("round trip")
 	}
 }
+
+func TestAdmitInputValidate(t *testing.T) {
+	d1 := time.Date(2026, 11, 2, 0, 0, 0, 0, time.UTC)
+	d2 := d1.AddDate(0, 0, 4)
+	for name, tc := range map[string]struct {
+		in AdmitInput
+		ok bool
+	}{
+		"освобождён":          {AdmitInput{}, true},
+		"освобождён с датами": {AdmitInput{From: &d1, To: &d2}, false},
+		"3 смены":             {AdmitInput{Shifts: 3, From: &d1, To: &d2}, true},
+		"1 смена":             {AdmitInput{Shifts: 1, From: &d1, To: &d2}, false},
+		"15 смен":             {AdmitInput{Shifts: 15, From: &d1, To: &d2}, false},
+		"без дат":             {AdmitInput{Shifts: 3}, false},
+		"конец раньше начала": {AdmitInput{Shifts: 3, From: &d2, To: &d1}, false},
+		"в один день":         {AdmitInput{Shifts: 2, From: &d1, To: &d1}, true},
+	} {
+		if err := tc.in.Validate(); (err == nil) != tc.ok {
+			t.Errorf("%s: err = %v", name, err)
+		}
+	}
+	now := time.Now()
+	if !(Assignment{Kind: "primary", SignedAt: &now}).CanAdmit() ||
+		(Assignment{Kind: "repeat", SignedAt: &now}).CanAdmit() ||
+		(Assignment{Kind: "primary"}).CanAdmit() ||
+		(Assignment{Kind: "primary", SignedAt: &now, AdmittedAt: &now}).CanAdmit() {
+		t.Error("CanAdmit: допуск только после подписанного первичного и один раз")
+	}
+}

@@ -30,6 +30,12 @@ type memRepo struct {
 	kiosk       domain.KioskState
 	expectedIIN string
 	edsSigns    []domain.EDSSignature
+	admitBy     string
+}
+
+func (m *memRepo) AdmitAssignment(_ context.Context, _ domain.User, _ int64, _ domain.AdmitInput, by string) error {
+	m.admitBy = by
+	return nil
 }
 
 func (m *memRepo) InductionTemplate(_ context.Context, org, id int64) (domain.InductionTemplate, error) {
@@ -344,5 +350,20 @@ func TestOpenAndHistory(t *testing.T) {
 	s.Journal(ctx, hse, domain.JournalFilter{Workplace: true})
 	if repo.reason != "primary,repeat,unplanned,target" {
 		t.Fatalf("журнал на рабочем месте: %s", repo.reason)
+	}
+}
+
+func TestAdmit(t *testing.T) {
+	s, repo, _ := setup()
+	if err := s.Admit(ctx, worker, 100, domain.AdmitInput{}); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("рабочий не допускает: %v", err)
+	}
+	if err := s.Admit(ctx, hse, 100, domain.AdmitInput{Shifts: 20}); !isInvalid(err, "от 2 до 14") {
+		t.Fatalf("20 смен: %v", err)
+	}
+	h := hse
+	h.Name, h.Position = "Айгерим Нурланова", "Инженер ОТ"
+	if err := s.Admit(ctx, h, 100, domain.AdmitInput{}); err != nil || repo.admitBy != "Айгерим Нурланова, Инженер ОТ" {
+		t.Fatalf("допуск: %v, by %q", err, repo.admitBy)
 	}
 }

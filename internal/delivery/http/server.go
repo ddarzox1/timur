@@ -111,6 +111,7 @@ func (h *Handler) Routes() http.Handler {
 	m.Handle("POST /admin/assign", assigner(h.assign))
 	m.Handle("GET /admin/assignments", backoffice(h.assignments))
 	m.Handle("POST /admin/assignments/{batch}/remind", assigner(h.remind))
+	m.Handle("POST /admin/assignments/{id}/admit", backoffice(h.admit))
 	m.Handle("GET /admin/sessions/{batch}/kiosk", assigner(h.kiosk))
 	m.Handle("POST /admin/sessions/{batch}/kiosk", assigner(h.kioskStart))
 	m.Handle("GET /admin/sessions/{batch}/kiosk/{op}", assigner(h.kioskStatus))

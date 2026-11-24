@@ -59,6 +59,8 @@ func newFixture(t *testing.T, db *pgxpool.Pool) fixture {
 
 func randomPhone() string { return fmt.Sprintf("779%08d", rand.IntN(100_000_000)) }
 
+func randomIIN() string { return fmt.Sprintf("99%010d", rand.Int64N(10_000_000_000)) }
+
 func must(t *testing.T, err error) {
 	t.Helper()
 	if err != nil {
@@ -195,8 +197,10 @@ func TestPeopleConflictAndImport(t *testing.T) {
 	s, db := testStore(t)
 	a, b := newFixture(t, db), newFixture(t, db)
 	phone := randomPhone()
-	must(t, s.CreatePerson(ctx, a.org, domain.User{Name: "Ерлан", Phone: phone, IIN: "900101300017", Role: domain.RoleWorker, Active: true, LocationID: &b.loc}, "hash"))
-	if err := s.CreatePerson(ctx, a.org, domain.User{Name: "Дубль", Phone: phone, IIN: "900101300027", Role: domain.RoleWorker}, "hash"); !errors.Is(err, domain.ErrConflict) {
+	// Случайные ИИН: индекс входа уникален по всей базе, а в ней могут быть демо-пользователи seed.
+	iinA, iinB, iinC, iinD := randomIIN(), randomIIN(), randomIIN(), randomIIN()
+	must(t, s.CreatePerson(ctx, a.org, domain.User{Name: "Ерлан", Phone: phone, IIN: iinA, Role: domain.RoleWorker, Active: true, LocationID: &b.loc}, "hash"))
+	if err := s.CreatePerson(ctx, a.org, domain.User{Name: "Дубль", Phone: phone, IIN: iinB, Role: domain.RoleWorker}, "hash"); !errors.Is(err, domain.ErrConflict) {
 		t.Fatalf("дубль телефона: %v", err)
 	}
 	iin := "870514300470"
@@ -211,9 +215,9 @@ func TestPeopleConflictAndImport(t *testing.T) {
 	}
 
 	n, conflicts, _, err := s.ImportPeople(ctx, b.org, []domain.ImportRow{
-		{Line: 2, Name: "Берик", Phone: randomPhone(), IIN: "900101300037", PasswordHash: "hash", Department: "Сварочный участок", Location: "Новый объект"},
-		{Line: 3, Name: "Асель", Phone: randomPhone(), IIN: "900101300047", PasswordHash: "hash", Department: "сварочный УЧАСТОК"},
-		{Line: 4, Name: "Чужой", Phone: phone, IIN: "900101300017", PasswordHash: "hash"},
+		{Line: 2, Name: "Берик", Phone: randomPhone(), IIN: iinC, PasswordHash: "hash", Department: "Сварочный участок", Location: "Новый объект"},
+		{Line: 3, Name: "Асель", Phone: randomPhone(), IIN: iinD, PasswordHash: "hash", Department: "сварочный УЧАСТОК"},
+		{Line: 4, Name: "Чужой", Phone: phone, IIN: iinA, PasswordHash: "hash"},
 	})
 	must(t, err)
 	if n != 2 || len(conflicts) != 1 || conflicts[0] != 4 {
@@ -420,5 +424,45 @@ func TestBatchEDSVisitorPermission(t *testing.T) {
 	stranger := domain.EDSSignature{IIN: "900101300047", Name: "Чужой", CMS: "cms-x", SIGEXID: "doc-x", SignID: 8}
 	if err := s.CanSignBatch(ctx, viewer, forbidden, stranger.IIN); err == nil {
 		t.Fatal("посторонний ИИН должен быть отклонён, если посетители запрещены")
+	}
+}
+
+func TestAdmitAssignment(t *testing.T) {
+	s, db := testStore(t)
+	f, other := newFixture(t, db), newFixture(t, db)
+	worker, hseID := f.user(domain.RoleWorker), f.user(domain.RoleHSE)
+	viewer := domain.User{ID: hseID, OrgID: f.org, Role: domain.RoleHSE}
+	must(t, s.SaveInductionTemplate(ctx, f.org, domain.InductionTemplate{Title: "Первичный", Kind: "primary"}))
+	ts, _ := s.InductionTemplates(ctx, f.org)
+	batch := fmt.Sprintf("admit-%d", f.org)
+	_, err := s.CreateAssignments(ctx, viewer, ts[0].ID, &hseID, nil, batch, "", "", "", "", time.Now(), []int64{worker}, testInductionDoc(f.org, batch))
+	must(t, err)
+	rows, _ := s.BatchAssignments(ctx, viewer, batch)
+	id := rows[0].ID
+	d1, d2 := time.Date(2026, 11, 2, 0, 0, 0, 0, time.UTC), time.Date(2026, 11, 6, 0, 0, 0, 0, time.UTC)
+	in := domain.AdmitInput{Shifts: 3, From: &d1, To: &d2}
+
+	if err := s.AdmitAssignment(ctx, viewer, id, in, "Инженер"); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("допуск до подписи: %v", err)
+	}
+	_, err = db.Exec(ctx, `UPDATE induction_assignments SET signed_at = now() WHERE id = $1`, id)
+	must(t, err)
+	stranger := domain.User{ID: other.user(domain.RoleHSE), OrgID: other.org, Role: domain.RoleHSE}
+	if err := s.AdmitAssignment(ctx, stranger, id, in, "Чужой"); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("чужая организация: %v", err)
+	}
+	head := domain.User{ID: f.user(domain.RoleSectionHead), OrgID: f.org, Role: domain.RoleSectionHead}
+	if err := s.AdmitAssignment(ctx, head, id, in, "Без подразделения"); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("руководитель без области: %v", err)
+	}
+	must(t, s.AdmitAssignment(ctx, viewer, id, in, "Инженер"))
+	if err := s.AdmitAssignment(ctx, viewer, id, in, "Инженер"); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("повторный допуск: %v", err)
+	}
+	rows, _ = s.BatchAssignments(ctx, viewer, batch)
+	r := rows[0]
+	if r.AdmittedAt == nil || r.AdmittedByName != "Инженер" || r.InternshipShifts == nil || *r.InternshipShifts != 3 ||
+		r.InternshipFrom == nil || !r.InternshipFrom.Equal(d1) {
+		t.Fatalf("допуск не сохранён: %+v", r)
 	}
 }

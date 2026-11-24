@@ -36,6 +36,8 @@ type Repo interface {
 	KioskState(ctx context.Context, viewer domain.User, batch string) (domain.KioskState, error)
 	CanSignBatch(ctx context.Context, viewer domain.User, batch, iin string) error
 	ApplyBatchEDS(ctx context.Context, viewer domain.User, batch string, sig domain.EDSSignature) error
+	// AdmitAssignment — стажировка и допуск по подписанному первичному инструктажу в области viewer; иначе ErrNotFound.
+	AdmitAssignment(ctx context.Context, viewer domain.User, id int64, in domain.AdmitInput, byName string) error
 }
 
 type Directory interface {
@@ -372,6 +374,23 @@ func (s *Service) Remind(ctx context.Context, u domain.User, batch string) error
 		return domain.ErrNotFound
 	}
 	return s.notify(ctx, u.OrgID, batch)
+}
+
+// Admit — стажировка и допуск к самостоятельной работе после первичного инструктажа.
+// ponytail: допуск — запись авторизованного пользователя, не ЭЦП; перевести на подпись SIGEX
+// (отдельный PDF допуска и подпись работника «стажировку прошёл»), когда SIGEX заработает в prod.
+func (s *Service) Admit(ctx context.Context, u domain.User, id int64, in domain.AdmitInput) error {
+	if u.Role != domain.RoleInstructor && !u.ManagesDept() && !u.SeesOrg() {
+		return domain.ErrForbidden
+	}
+	if err := in.Validate(); err != nil {
+		return err
+	}
+	by := u.Name
+	if u.Position != "" {
+		by += ", " + u.Position
+	}
+	return s.repo.AdmitAssignment(ctx, u, id, in, by)
 }
 
 func (s *Service) Batches(ctx context.Context, u domain.User) ([]domain.Batch, error) {

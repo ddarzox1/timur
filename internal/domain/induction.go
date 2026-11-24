@@ -1,6 +1,9 @@
 package domain
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
 
 type InductionTemplate struct {
 	ID            int64  `db:"id"`
@@ -54,6 +57,52 @@ type Assignment struct {
 	InstructorSignerIIN  string     `db:"instructor_signer_iin"`
 	InstructorSignerName string     `db:"instructor_signer_name"`
 	SIGEXID              string     `db:"sigex_id"`
+	InternshipShifts     *int       `db:"internship_shifts"`
+	InternshipFrom       *time.Time `db:"internship_from"`
+	InternshipTo         *time.Time `db:"internship_to"`
+	AdmittedAt           *time.Time `db:"admitted_at"`
+	AdmittedByName       string     `db:"admitted_by_name"`
+}
+
+// CanAdmit — допуск к самостоятельной работе оформляется после подписанного первичного инструктажа, один раз.
+func (a Assignment) CanAdmit() bool {
+	return a.Kind == "primary" && a.SignedAt != nil && a.AdmittedAt == nil
+}
+
+// Internship — строка колонки «Стажировка» журнала на рабочем месте.
+func (a Assignment) Internship() string {
+	switch {
+	case a.InternshipShifts == nil:
+		return ""
+	case *a.InternshipShifts == 0:
+		return "освобождён от стажировки"
+	case a.InternshipFrom != nil && a.InternshipTo != nil:
+		return fmt.Sprintf("%d смен, %s–%s", *a.InternshipShifts, a.InternshipFrom.Format("02.01.2006"), a.InternshipTo.Format("02.01.2006"))
+	}
+	return fmt.Sprintf("%d смен", *a.InternshipShifts)
+}
+
+// AdmitInput — стажировка перед допуском: 0 смен означает освобождение от стажировки.
+type AdmitInput struct {
+	Shifts   int
+	From, To *time.Time
+}
+
+// Validate проверяет правило стажировки: от 2 до 14 смен с датами или освобождение без дат.
+func (in AdmitInput) Validate() error {
+	if in.Shifts == 0 {
+		if in.From != nil || in.To != nil {
+			return Invalid("При освобождении от стажировки даты не указываются")
+		}
+		return nil
+	}
+	if in.Shifts < 2 || in.Shifts > 14 {
+		return Invalid("Стажировка — от 2 до 14 смен")
+	}
+	if in.From == nil || in.To == nil || in.To.Before(*in.From) {
+		return Invalid("Укажите даты стажировки: начало не позже окончания")
+	}
+	return nil
 }
 
 func (a Assignment) TitleIn(lang string) string { return titleIn(lang, a.Title, a.TitleKK) }

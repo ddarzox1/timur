@@ -18,9 +18,17 @@
 {{if .Rows}}
 <h2>Сотрудники</h2>
 <div class="table-wrap"><table>
-  <thead><tr><th>ФИО</th><th>Должность</th><th>Подразделение</th><th>Статус</th><th>ЭЦП</th></tr></thead>
+  <thead><tr><th>ФИО</th><th>Должность</th><th>Подразделение</th><th>Статус</th><th>ЭЦП</th><th>Стажировка и допуск</th></tr></thead>
   <tbody>{{range .Rows}}<tr><td>{{.UserName}}</td><td>{{.Position}}</td><td>{{.Department}}</td><td>{{template "assignBadge" .}}</td>
-    <td>{{if .CMS}}<span class="badge ok">SIGEX #{{deref .SIGEXSignID}}</span><div class="small muted">{{.SignerName}} · {{.SignerIIN}}</div>{{else}}—{{end}}</td></tr>{{end}}</tbody>
+    <td>{{if .CMS}}<span class="badge ok">SIGEX #{{deref .SIGEXSignID}}</span><div class="small muted">{{.SignerName}} · {{.SignerIIN}}</div>{{else}}—{{end}}</td>
+    <td>{{if .AdmittedAt}}{{.Internship}}<div class="small muted">допущен {{date .AdmittedAt}} · {{.AdmittedByName}}</div>
+      {{else if .CanAdmit}}<form class="row small" method="post" action="/admin/assignments/{{.ID}}/admit">
+        <input type="hidden" name="batch" value="{{$.Batch}}">
+        <label>Смен <input type="number" name="shifts" min="2" max="14" style="width:4.5em"></label>
+        <label>с <input type="date" name="from"></label><label>по <input type="date" name="to"></label>
+        <label class="check"><input type="checkbox" name="exempt" value="1"> освобождён</label>
+        <button class="btn primary" type="submit">Допустить</button>
+      </form>{{else if eq .Kind "primary"}}<span class="muted small">после подписи</span>{{else}}—{{end}}</td></tr>{{end}}</tbody>
 </table></div>
 {{end}}
 {{end}}

@@ -29,6 +29,7 @@
     <th>Дата</th><th>ФИО инструктируемого</th><th>Год рождения</th><th>Профессия, должность</th>
     {{if .Workplace}}<th>Вид инструктажа</th><th>Причина внепланового</th><th>Рабочее место / целевые данные</th>{{else}}<th>Подразделение</th>{{end}}
     <th>ФИО, должность инструктирующего</th><th>Подпись инструктирующего</th><th>Подпись инструктируемого</th>
+    {{if .Workplace}}<th>Стажировка (смен, с–по)</th><th>Допуск к работе (кто, дата)</th>{{end}}
   </tr></thead>
   <tbody>
   {{range $row := .Rows}}<tr>
@@ -37,7 +38,8 @@
     <td>{{.Instructor}}{{with .InstructorPos}}, {{.}}{{end}}</td>
     <td class="small">{{if .InstructorSignedAt}}<b>{{.InstructorSignerName}}</b><br>{{maskIIN .InstructorSignerIIN}}<br>{{datetime .InstructorSignedAt}}{{else}}<span class="muted">ожидается</span>{{end}}</td>
     <td class="small"><b>{{.SignerName}}</b><br>{{maskIIN .SignerIIN}}<br>{{datetime .SignedAt}}{{with .SIGEXID}}<br><a href="/admin/sessions/{{$row.Batch}}/ddc">карточка SIGEX</a>{{end}}</td>
-  </tr>{{else}}<tr><td colspan="{{if .Workplace}}10{{else}}8{{end}}" class="muted">Подписанных инструктажей за период нет.</td></tr>{{end}}
+    {{if $.Workplace}}<td class="small">{{.Internship}}</td><td class="small">{{if .AdmittedAt}}{{.AdmittedByName}}<br>{{date .AdmittedAt}}{{end}}</td>{{end}}
+  </tr>{{else}}<tr><td colspan="{{if .Workplace}}12{{else}}8{{end}}" class="muted">Подписанных инструктажей за период нет.</td></tr>{{end}}
   </tbody>
 </table>
 {{end}}

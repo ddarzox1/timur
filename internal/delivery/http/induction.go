@@ -3,6 +3,7 @@ package httpdelivery
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -216,6 +217,20 @@ func (h *Handler) remind(w http.ResponseWriter, r *http.Request, u domain.User) 
 	return nil
 }
 
+func (h *Handler) admit(w http.ResponseWriter, r *http.Request, u domain.User) error {
+	if err := r.ParseForm(); err != nil {
+		return err
+	}
+	in := domain.AdmitInput{From: formDate(r, "from"), To: formDate(r, "to")}
+	if r.FormValue("exempt") != "1" {
+		in.Shifts = formInt(r, "shifts", -1)
+	}
+	if err := h.inductions.Admit(r.Context(), u, pathID(r), in); err != nil {
+		return err
+	}
+	return redirect(w, r, "/admin/assignments?batch="+url.QueryEscape(r.FormValue("batch")))
+}
+
 // --- журналы ---
 
 func journalFilter(r *http.Request) domain.JournalFilter {
@@ -252,7 +267,7 @@ func (h *Handler) journalCSV(w http.ResponseWriter, r *http.Request, u domain.Us
 		return err
 	}
 	cw := startCSV(w, "journal.csv")
-	cw.Write([]string{"Дата", "ФИО", "Год рождения", "Профессия, должность", "Вид инструктажа", "Причина", "Рабочее место", "Основание", "Вид работ", "Документы", "Инструктирующий", "ЭЦП инструктирующего", "ЭЦП инструктируемого", "ИИН (маска)", "SIGEX"})
+	cw.Write([]string{"Дата", "ФИО", "Год рождения", "Профессия, должность", "Вид инструктажа", "Причина", "Рабочее место", "Основание", "Вид работ", "Документы", "Инструктирующий", "ЭЦП инструктирующего", "ЭЦП инструктируемого", "ИИН (маска)", "SIGEX", "Стажировка", "Допуск к работе"})
 	for _, x := range rows {
 		by := ""
 		if x.BirthYear != nil {
@@ -261,7 +276,8 @@ func (h *Handler) journalCSV(w http.ResponseWriter, r *http.Request, u domain.Us
 		cw.Write([]string{fmtDate(x.SignedAt), x.UserName, by, x.Position, domain.KindLabels[x.Kind] + ": " + x.Title, x.Reason,
 			x.WorkLocation, x.Basis, x.WorkType, x.Docs,
 			strings.Trim(x.Instructor+", "+x.InstructorPos, ", "), x.InstructorSignerName + " " + fmtDateTime(x.InstructorSignedAt),
-			x.SignerName + " " + fmtDateTime(x.SignedAt), maskIIN(x.SignerIIN), x.SIGEXID})
+			x.SignerName + " " + fmtDateTime(x.SignedAt), maskIIN(x.SignerIIN), x.SIGEXID,
+			x.Internship(), strings.TrimSpace(x.AdmittedByName + " " + fmtDate(x.AdmittedAt))})
 	}
 	cw.Flush()
 	return cw.Error()
