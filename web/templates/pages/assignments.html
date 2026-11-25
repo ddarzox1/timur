@@ -18,9 +18,16 @@
 {{if .Rows}}
 <h2>Сотрудники</h2>
 <div class="table-wrap"><table>
-  <thead><tr><th>ФИО</th><th>Должность</th><th>Подразделение</th><th>Статус</th><th>ЭЦП</th><th>Стажировка и допуск</th></tr></thead>
-  <tbody>{{range .Rows}}<tr><td>{{.UserName}}</td><td>{{.Position}}</td><td>{{.Department}}</td><td>{{template "assignBadge" .}}</td>
-    <td>{{if .CMS}}<span class="badge ok">SIGEX #{{deref .SIGEXSignID}}</span><div class="small muted">{{.SignerName}} · {{.SignerIIN}}</div>{{else}}—{{end}}</td>
+  <thead><tr><th>ФИО</th><th>Должность</th><th>Подразделение</th><th>Проверка знаний</th><th>Статус</th><th>ЭЦП записи</th><th>Стажировка и допуск</th></tr></thead>
+  <tbody>{{range .Rows}}{{$r := .}}<tr><td>{{.UserName}}</td><td>{{.Position}}</td><td>{{.Department}}</td>
+    <td>{{if .KnowledgeResult}}<span class="badge {{if eq .KnowledgeResult "passed"}}ok{{else}}danger{{end}}">{{knowledge .KnowledgeResult}}</span>
+      {{else}}<form class="row small" method="post" action="/admin/assignments/{{.ID}}/knowledge"><input type="hidden" name="batch" value="{{$.Batch}}">
+        <select name="result" required><option value="">Результат…</option><option value="passed">Прошёл</option><option value="failed">Не прошёл</option></select>
+        <button class="btn primary" type="submit">Зафиксировать</button></form>{{end}}</td>
+    <td>{{template "assignBadge" .}}</td>
+    <td>{{if .CMS}}<span class="badge ok">Работник · SIGEX #{{deref .SIGEXSignID}}</span><div class="small muted">{{.SignerName}} · {{.SignerIIN}}</div>{{else}}<span class="muted">работник ожидается</span>{{end}}
+      {{if .InstructorSignedAt}}<div><span class="badge ok">Инструктирующий · SIGEX #{{deref .InstructorSIGEXSignID}}</span></div>{{end}}
+      {{with .RecordPDFPath}}<div class="small"><a href="{{.}}" target="_blank">PDF записи</a>{{if $r.SIGEXID}} · <a href="/admin/assignments/{{$r.ID}}/ddc" target="_blank">DDC</a>{{end}}</div>{{end}}</td>
     <td>{{if .AdmittedAt}}{{.Internship}}<div class="small muted">допущен {{date .AdmittedAt}} · {{.AdmittedByName}}</div>
       {{else if .CanAdmit}}<form class="row small" method="post" action="/admin/assignments/{{.ID}}/admit">
         <input type="hidden" name="batch" value="{{$.Batch}}">

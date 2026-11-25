@@ -20,10 +20,13 @@
 {{if .T.Body}}<div class="doc" tabindex="0">{{.T.Body}}</div>{{end}}
 {{with .T.FilePath}}<p><a class="btn" href="{{.}}" target="_blank" hx-boost="false">{{template "i" "file"}}{{t "Открыть документ"}}</a></p>{{end}}
 <p class="muted small">Подписывая протокол ЭЦП, вы подтверждаете ознакомление и понимание требований безопасности.</p>
+{{if not .A.KnowledgeResult}}<div class="notice">Инструктирующий ещё не зафиксировал результат проверки знаний. Подпись станет доступна после этого.</div>
+{{else}}<p><b>Результат проверки знаний:</b> {{knowledge .A.KnowledgeResult}}</p>
 {{if .OpID}}
 <div hx-get="/m/inductions/{{.A.ID}}/egov/{{.OpID}}" hx-trigger="load" hx-swap="outerHTML"><span class="muted">Готовим eGov mobile…</span></div>
 {{else}}
 <form class="sticky-bottom" method="post" action="/m/inductions/{{.A.ID}}/egov"><button class="btn accent big" type="submit">{{template "i" "sign"}}Подписать в eGov mobile</button></form>
+{{end}}
 {{end}}
 {{end}}
 {{end}}

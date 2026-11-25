@@ -28,18 +28,17 @@
 <table>
   <thead><tr>
     <th>№</th><th>Дата</th><th>ФИО инструктируемого</th><th>Год рождения</th><th>Профессия, должность</th>
-    {{if .Workplace}}<th>Вид инструктажа</th><th>Причина внепланового</th><th>Рабочее место / целевые данные</th>{{else}}<th>Подразделение</th>{{end}}
-    <th>ФИО, должность инструктирующего</th><th>Подпись инструктирующего</th><th>Подпись инструктируемого</th>
-    {{if .Workplace}}<th>Стажировка (смен, с–по)</th><th>Допуск к работе (кто, дата)</th>{{end}}
+    {{if .Workplace}}<th>Вид инструктажа</th><th>Причина внепланового</th>{{else}}<th>Подразделение</th>{{end}}
+    <th>ФИО, должность инструктирующего</th>{{if .Workplace}}<th>Проверка знаний</th>{{end}}<th>Подпись инструктирующего</th><th>Подпись инструктируемого</th>
   </tr></thead>
   <tbody>
   {{range $i, $r := .Rows}}<tr>
     <td>{{add $i 1}}</td><td>{{date $r.SignedAt}}</td><td>{{$r.UserName}}</td><td>{{with $r.BirthYear}}{{.}}{{end}}</td><td>{{$r.Position}}</td>
-    {{if $.Workplace}}<td>{{kind $r.Kind}}<div class="small">{{$r.Title}}</div></td><td>{{$r.Reason}}</td><td>{{$r.WorkLocation}}{{with $r.Basis}}<div class="small">Основание: {{.}}</div>{{end}}{{with $r.WorkType}}<div class="small">Работы: {{.}}</div>{{end}}{{with $r.Docs}}<div class="small">Документы: {{.}}</div>{{end}}</td>{{else}}<td>{{$r.Department}}</td>{{end}}
+    {{if $.Workplace}}<td>{{kind $r.Kind}}<div class="small">{{$r.Title}}</div></td><td>{{$r.Reason}}</td>{{else}}<td>{{$r.Department}}</td>{{end}}
     <td>{{$r.Instructor}}{{with $r.InstructorPos}}, {{.}}{{end}}</td>
+    {{if $.Workplace}}<td>{{knowledge $r.KnowledgeResult}}</td>{{end}}
     <td><div class="small">{{$r.InstructorSignerName}}<br>{{maskIIN $r.InstructorSignerIIN}}<br>{{datetime $r.InstructorSignedAt}}</div></td>
     <td><div class="small">{{$r.SignerName}}<br>{{maskIIN $r.SignerIIN}}<br>{{datetime $r.SignedAt}}<br>SIGEX {{$r.SIGEXID}}</div></td>
-    {{if $.Workplace}}<td class="small">{{$r.Internship}}</td><td class="small">{{if $r.AdmittedAt}}{{$r.AdmittedByName}}<br>{{date $r.AdmittedAt}}{{end}}</td>{{end}}
   </tr>{{end}}
   </tbody>
 </table>

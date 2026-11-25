@@ -18,16 +18,17 @@ import (
 var pages = map[string]*template.Template{}
 
 var funcs = template.FuncMap{
-	"t":        func(s string) string { return s }, // переопределяется на запрос в renderBlock
-	"date":     fmtDate,
-	"datetime": fmtDateTime,
-	"risk":     func(s string) string { return domain.RiskLabels[s] },
-	"status":   func(s string) string { return domain.StatusLabels[s] },
-	"kind":     func(s string) string { return domain.KindLabels[s] },
-	"cat":      func(k string) string { c, _ := domain.CategoryByKey(k); return c.Label },
-	"catIcon":  func(k string) string { c, _ := domain.CategoryByKey(k); return c.Icon },
-	"role":     func(s string) string { return domain.RoleLabels[s] },
-	"freq":     func(s string) string { return domain.FreqLabels[s] },
+	"t":         func(s string) string { return s }, // переопределяется на запрос в renderBlock
+	"date":      fmtDate,
+	"datetime":  fmtDateTime,
+	"risk":      func(s string) string { return domain.RiskLabels[s] },
+	"status":    func(s string) string { return domain.StatusLabels[s] },
+	"kind":      func(s string) string { return domain.KindLabels[s] },
+	"knowledge": domain.KnowledgeResultLabel,
+	"cat":       func(k string) string { c, _ := domain.CategoryByKey(k); return c.Label },
+	"catIcon":   func(k string) string { c, _ := domain.CategoryByKey(k); return c.Icon },
+	"role":      func(s string) string { return domain.RoleLabels[s] },
+	"freq":      func(s string) string { return domain.FreqLabels[s] },
 	"pct": func(a, b int) int {
 		if b == 0 {
 			return 0

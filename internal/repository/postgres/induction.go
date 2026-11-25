@@ -11,15 +11,25 @@ import (
 
 const assignmentSelect = `SELECT a.id, a.template_id, a.user_id, a.batch, a.reason, a.location_id, coalesce(al.name, '') AS work_location,
 	a.basis, a.work_type, a.docs, a.assigned_at, a.due_at, a.signed_at, a.signature,
-	a.selfie_path, a.geo_ok, t.title, t.title_kk, t.kind, u.name AS user_name, u.birth_year, u.position,
-	coalesce(d.name, '') AS department, coalesce(i.name, '') AS instructor, coalesce(i.position, '') AS instructor_pos,
+	a.selfie_path, a.geo_ok, t.title, t.title_kk, t.kind,
+	a.worker_name_snapshot AS user_name, a.worker_birth_year_snapshot AS birth_year,
+	a.worker_position_snapshot AS position,
+	a.worker_department_snapshot AS department, a.instructor_name_snapshot AS instructor,
+	a.instructor_position_snapshot AS instructor_pos, coalesce(i.iin, '') AS instructor_iin,
+	a.knowledge_result, coalesce(er.pdf_path, '') AS record_pdf_path, coalesce(er.sha256, '') AS record_sha256,
 	coalesce(u.iin, '') AS user_iin, a.iin, a.signer_name, a.cms, a.sigex_sign_id,
-	ed.instructor_signed_at, coalesce(ed.instructor_iin, '') AS instructor_signer_iin,
-	coalesce(ed.instructor_name, '') AS instructor_signer_name, coalesce(ed.sigex_id, '') AS sigex_id,
+	coalesce(er.instructor_signed_at, ed.instructor_signed_at) AS instructor_signed_at,
+	coalesce(er.instructor_iin, ed.instructor_iin, '') AS instructor_signer_iin,
+	coalesce(er.instructor_name, ed.instructor_name, '') AS instructor_signer_name,
+	coalesce(er.instructor_cms, ed.instructor_cms, '') AS instructor_cms,
+	coalesce(er.instructor_sign_id, ed.instructor_sign_id) AS instructor_sign_id,
+	coalesce(er.sigex_id, ed.sigex_id, '') AS sigex_id,
+	a.material_body_snapshot AS material_body, a.material_file_snapshot AS material_file_path, a.material_sha256,
 	a.internship_shifts, a.internship_from, a.internship_to, a.admitted_at, a.admitted_by_name
 	FROM induction_assignments a JOIN induction_templates t ON t.id = a.template_id JOIN users u ON u.id = a.user_id
 	LEFT JOIN departments d ON d.id = u.department_id LEFT JOIN users i ON i.id = a.instructor_id
 	LEFT JOIN locations al ON al.id = a.location_id
+	LEFT JOIN induction_records er ON er.assignment_id = a.id
 	LEFT JOIN induction_docs ed ON ed.org_id = a.org_id AND ed.batch = a.batch`
 
 func (s *Store) InductionTemplates(ctx context.Context, orgID int64) ([]domain.InductionTemplate, error) {
@@ -69,7 +79,8 @@ func (s *Store) AdmitAssignment(ctx context.Context, viewer domain.User, id int6
 		admitted_at = now(), admitted_by = $6, admitted_by_name = $7
 		FROM induction_templates t, users u
 		WHERE a.id = $1 AND a.org_id = $2 AND t.id = a.template_id AND u.id = a.user_id
-		AND t.kind = 'primary' AND a.signed_at IS NOT NULL AND a.admitted_at IS NULL
+		AND t.kind = 'primary' AND a.knowledge_result = 'passed' AND a.signed_at IS NOT NULL AND a.admitted_at IS NULL
+		AND EXISTS (SELECT 1 FROM induction_records ir WHERE ir.assignment_id=a.id AND ir.instructor_signed_at IS NOT NULL)
 		AND ($8::bigint[] IS NULL OR u.department_id = ANY($8) OR ($9 = 'instructor' AND a.instructor_id = $6))`,
 		id, viewer.OrgID, in.Shifts, in.From, in.To, viewer.ID, byName, deps, viewer.Role)
 	if err != nil {
@@ -87,7 +98,7 @@ func (s *Store) UsersForAssignment(ctx context.Context, viewer domain.User, user
 		return nil, err
 	}
 	return list[domain.User](ctx, s.db, `SELECT id, org_id, coalesce(phone, '') AS phone, coalesce(iin, '') AS iin,
-		name, position, department_id, location_id, role, active FROM users
+		name, birth_year, position, department_id, location_id, role, active FROM users
 		WHERE org_id = $1 AND id = ANY($2) AND active AND ($3::bigint[] IS NULL OR department_id = ANY($3))
 		ORDER BY id`, viewer.OrgID, userIDs, deps)
 }
@@ -102,9 +113,13 @@ func (s *Store) CreateAssignments(ctx context.Context, viewer domain.User, templ
 	err = pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
 		// Сотрудники фильтруются по организации и области видимости.
 		tag, err := tx.Exec(ctx, `INSERT INTO induction_assignments
-			(org_id, template_id, user_id, instructor_id, location_id, batch, reason, basis, work_type, docs, due_at)
-			SELECT $1, $2, id, $3, $4, $5, $6, $7, $8, $9, $10 FROM users
-			WHERE org_id = $1 AND id = ANY($11) AND ($12::bigint[] IS NULL OR department_id = ANY($12))`,
+			(org_id, template_id, user_id, instructor_id, location_id, batch, reason, basis, work_type, docs, due_at,
+			 worker_name_snapshot, worker_birth_year_snapshot, worker_position_snapshot, worker_department_snapshot,
+			 instructor_name_snapshot, instructor_position_snapshot)
+			SELECT $1, $2, u.id, $3, $4, $5, $6, $7, $8, $9, $10,
+			 u.name, u.birth_year, u.position, coalesce(d.name, ''), coalesce(i.name, ''), coalesce(i.position, '')
+			FROM users u LEFT JOIN users i ON i.id = $3 LEFT JOIN departments d ON d.id=u.department_id
+			WHERE u.org_id = $1 AND u.id = ANY($11) AND ($12::bigint[] IS NULL OR u.department_id = ANY($12))`,
 			viewer.OrgID, templateID, instructorID, locationID, batch, reason, basis, workType, docs, due, userIDs, deps)
 		if err != nil {
 			return err
@@ -262,12 +277,106 @@ func (s *Store) BatchAssignments(ctx context.Context, viewer domain.User, batch 
 		viewer.OrgID, batch, deps, viewer.Role, viewer.ID)
 }
 
+func (s *Store) ScopedAssignment(ctx context.Context, viewer domain.User, id int64) (domain.Assignment, error) {
+	deps, err := s.scopeDepts(ctx, viewer)
+	if err != nil {
+		return domain.Assignment{}, err
+	}
+	return one[domain.Assignment](ctx, s.db, assignmentSelect+` WHERE a.org_id = $1 AND a.id = $2
+		AND ($3::bigint[] IS NULL OR u.department_id = ANY($3) OR ($4 = 'instructor' AND a.instructor_id = $5))`,
+		viewer.OrgID, id, deps, viewer.Role, viewer.ID)
+}
+
+func (s *Store) SaveKnowledgeRecord(ctx context.Context, viewer domain.User, id int64, result, pdfPath, sha256 string) error {
+	if !domain.ValidKnowledgeResult(result) {
+		return domain.Invalid("Укажите результат проверки знаний")
+	}
+	if _, err := s.ScopedAssignment(ctx, viewer, id); err != nil {
+		return err
+	}
+	return pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+		tag, err := tx.Exec(ctx, `UPDATE induction_assignments SET knowledge_result=$3
+			WHERE id=$1 AND org_id=$2 AND signed_at IS NULL AND knowledge_result=''`, id, viewer.OrgID, result)
+		if err != nil {
+			return err
+		}
+		if tag.RowsAffected() != 1 {
+			return domain.Invalid("Результат уже зафиксирован или запись подписана")
+		}
+		_, err = tx.Exec(ctx, `INSERT INTO induction_records (assignment_id, org_id, pdf_path, sha256)
+			VALUES ($1,$2,$3,$4)`, id, viewer.OrgID, pdfPath, sha256)
+		return err
+	})
+}
+
+func (s *Store) SnapshotBatchMaterial(ctx context.Context, viewer domain.User, batch, body, filePath, sha256 string) error {
+	tag, err := s.db.Exec(ctx, `UPDATE induction_assignments SET material_body_snapshot=$3, material_file_snapshot=$4, material_sha256=$5
+		WHERE org_id=$1 AND batch=$2 AND material_sha256=''`, viewer.OrgID, batch, body, filePath, sha256)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrNotFound
+	}
+	return nil
+}
+
+func (s *Store) ApplyAssignmentEDS(ctx context.Context, viewer domain.User, id int64, instructor bool, sig domain.EDSSignature) error {
+	if _, err := s.ScopedAssignment(ctx, viewer, id); err != nil {
+		return err
+	}
+	return pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+		var workerIIN, instructorIIN, result string
+		var signedAt *time.Time
+		var instructorSignedAt *time.Time
+		err := tx.QueryRow(ctx, `SELECT coalesce(u.iin,''), coalesce(i.iin,''), a.knowledge_result, a.signed_at, r.instructor_signed_at
+			FROM induction_assignments a JOIN users u ON u.id=a.user_id LEFT JOIN users i ON i.id=a.instructor_id
+			JOIN induction_records r ON r.assignment_id=a.id WHERE a.id=$1 AND a.org_id=$2 FOR UPDATE OF a, r`, id, viewer.OrgID).
+			Scan(&workerIIN, &instructorIIN, &result, &signedAt, &instructorSignedAt)
+		if err != nil {
+			return notFound(err)
+		}
+		if result == "" {
+			return domain.Invalid("Сначала зафиксируйте результат проверки знаний")
+		}
+		if !instructor {
+			if signedAt != nil {
+				return domain.Invalid("Работник уже подписал запись")
+			}
+			if workerIIN != sig.IIN {
+				return domain.Invalid("ИИН подписанта не совпадает с ИИН работника")
+			}
+			_, err = tx.Exec(ctx, `UPDATE induction_assignments SET signed_at=now(), iin=$3, signer_name=$4, cms=$5, sigex_sign_id=$6
+				WHERE id=$1 AND org_id=$2`, id, viewer.OrgID, sig.IIN, sig.Name, sig.CMS, sig.SignID)
+		} else {
+			if signedAt == nil {
+				return domain.Invalid("Сначала запись подписывает работник")
+			}
+			if instructorSignedAt != nil {
+				return domain.Invalid("Инструктирующий уже подписал запись")
+			}
+			if instructorIIN != sig.IIN {
+				return domain.Invalid("ИИН подписанта не совпадает с ИИН инструктирующего")
+			}
+			_, err = tx.Exec(ctx, `UPDATE induction_records SET instructor_signed_at=now(), instructor_iin=$3,
+				instructor_name=$4, instructor_cms=$5, instructor_sign_id=$6 WHERE assignment_id=$1 AND org_id=$2`,
+				id, viewer.OrgID, sig.IIN, sig.Name, sig.CMS, sig.SignID)
+		}
+		if err != nil {
+			return err
+		}
+		_, err = tx.Exec(ctx, `UPDATE induction_records SET sigex_id=$3 WHERE assignment_id=$1 AND org_id=$2`, id, viewer.OrgID, sig.SIGEXID)
+		return err
+	})
+}
+
 func (s *Store) Journal(ctx context.Context, viewer domain.User, kinds []string, f domain.JournalFilter) ([]domain.Assignment, error) {
 	deps, err := s.scopeDepts(ctx, viewer)
 	if err != nil {
 		return nil, err
 	}
-	return list[domain.Assignment](ctx, s.db, assignmentSelect+` WHERE a.org_id = $1 AND a.signed_at IS NOT NULL AND t.kind = ANY($2)
+	return list[domain.Assignment](ctx, s.db, assignmentSelect+` WHERE a.org_id = $1 AND a.signed_at IS NOT NULL
+		AND (er.instructor_signed_at IS NOT NULL OR (er.assignment_id IS NULL AND ed.instructor_signed_at IS NOT NULL)) AND t.kind = ANY($2)
 		AND a.signed_at >= coalesce(nullif($3, '')::date, '-infinity') AND a.signed_at < coalesce(nullif($4, '')::date + 1, 'infinity')
 		AND ($5 = '' OR u.department_id::text = $5) AND ($6 = '' OR u.name ILIKE '%' || $6 || '%')
 		AND ($7::bigint[] IS NULL OR u.department_id = ANY($7) OR ($8 = 'instructor' AND a.instructor_id = $9))

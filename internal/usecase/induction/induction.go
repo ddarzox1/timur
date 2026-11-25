@@ -31,6 +31,10 @@ type Repo interface {
 	UnsignedInBatch(ctx context.Context, orgID int64, batch string) ([]domain.Notice, error)
 	Batches(ctx context.Context, viewer domain.User) ([]domain.Batch, error)
 	BatchAssignments(ctx context.Context, viewer domain.User, batch string) ([]domain.Assignment, error)
+	ScopedAssignment(ctx context.Context, viewer domain.User, id int64) (domain.Assignment, error)
+	SaveKnowledgeRecord(ctx context.Context, viewer domain.User, id int64, result, pdfPath, sha256 string) error
+	SnapshotBatchMaterial(ctx context.Context, viewer domain.User, batch, body, filePath, sha256 string) error
+	ApplyAssignmentEDS(ctx context.Context, viewer domain.User, id int64, instructor bool, sig domain.EDSSignature) error
 	Journal(ctx context.Context, viewer domain.User, kinds []string, f domain.JournalFilter) ([]domain.Assignment, error)
 	UserAssignments(ctx context.Context, userID int64, signed bool) ([]domain.Assignment, error)
 	KioskState(ctx context.Context, viewer domain.User, batch string) (domain.KioskState, error)
@@ -110,6 +114,7 @@ func (s *Service) Open(ctx context.Context, u domain.User, id int64) (Reading, e
 	if err != nil {
 		return Reading{}, err
 	}
+	t.Body, t.FilePath = a.MaterialBody, a.MaterialFilePath
 	r := Reading{Assignment: a, Template: t}
 	if u.LocationID != nil {
 		if loc, err := s.dir.Location(ctx, u.OrgID, *u.LocationID); err == nil {
@@ -264,15 +269,19 @@ func (s *Service) Assign(ctx context.Context, u domain.User, in AssignInput) (in
 		if !domain.ValidIIN(person.IIN) {
 			return 0, domain.Invalid("Для подписи ЭЦП у каждого участника должен быть указан корректный ИИН")
 		}
+		if person.BirthYear == nil {
+			return 0, domain.Invalid("Для журнала у каждого сотрудника должен быть указан год рождения")
+		}
+		if strings.TrimSpace(person.Position) == "" {
+			return 0, domain.Invalid("Для журнала у каждого сотрудника должна быть указана профессия или должность")
+		}
+		if t.Kind == "intro" && person.DepartmentID == nil {
+			return 0, domain.Invalid("Для вводного журнала у каждого сотрудника должно быть указано подразделение")
+		}
 	}
 	if t.Kind == "primary" {
 		if in.LocationID == nil {
 			return 0, domain.Invalid("Для первичного инструктажа укажите рабочее место")
-		}
-		for _, person := range users {
-			if strings.TrimSpace(person.Position) == "" {
-				return 0, domain.Invalid("Для первичного инструктажа у каждого сотрудника должна быть указана профессия или должность")
-			}
 		}
 	}
 	if in.LocationID != nil {
@@ -300,6 +309,9 @@ func (s *Service) Assign(ctx context.Context, u domain.User, in AssignInput) (in
 	if !domain.ValidIIN(instructorUser.IIN) {
 		return 0, domain.Invalid("У инструктирующего должен быть указан корректный ИИН")
 	}
+	if strings.TrimSpace(instructorUser.Position) == "" {
+		return 0, domain.Invalid("У инструктирующего должна быть указана должность")
+	}
 	batch := newBatch()
 	org, err := s.dir.Org(ctx, u.OrgID)
 	if err != nil {
@@ -323,9 +335,10 @@ func (s *Service) Assign(ctx context.Context, u domain.User, in AssignInput) (in
 		}
 		materialHash.Write(material)
 	}
+	materialSHA := fmt.Sprintf("%x", materialHash.Sum(nil))
 	pdfBytes, sum, err := s.protocol.Build(domain.ProtocolInput{Org: org, Template: t, Batch: batch, AssignedAt: assignedAt,
 		DueAt: *in.Due, Instructor: instructorUser.Name, Location: location, Reason: in.Reason, Basis: in.Basis,
-		WorkType: in.WorkType, Docs: in.Docs, MaterialSHA: fmt.Sprintf("%x", materialHash.Sum(nil))})
+		WorkType: in.WorkType, Docs: in.Docs, MaterialSHA: materialSHA})
 	if err != nil {
 		return 0, err
 	}
@@ -335,6 +348,9 @@ func (s *Service) Assign(ctx context.Context, u domain.User, in AssignInput) (in
 	}
 	doc := domain.InductionDoc{OrgID: u.OrgID, Batch: batch, PDFPath: pdfPath, SHA256: sum, AllowVisitors: in.AllowVisitors}
 	n, err := s.repo.CreateAssignments(ctx, u, t.ID, instructor, in.LocationID, batch, in.Reason, in.Basis, in.WorkType, in.Docs, *in.Due, in.UserIDs, doc)
+	if err == nil {
+		err = s.repo.SnapshotBatchMaterial(ctx, u, batch, t.Body, t.FilePath, materialSHA)
+	}
 	if err != nil || !in.NotifySMS {
 		return n, err
 	}
@@ -399,6 +415,64 @@ func (s *Service) Batches(ctx context.Context, u domain.User) ([]domain.Batch, e
 
 func (s *Service) BatchAssignments(ctx context.Context, u domain.User, batch string) ([]domain.Assignment, error) {
 	return s.repo.BatchAssignments(ctx, u, batch)
+}
+
+// RecordKnowledge фиксирует результат проверки знаний и создаёт неизменяемый PDF одной строки журнала.
+// После этого менять результат или содержимое записи нельзя — документ доступен только для подписания.
+func (s *Service) RecordKnowledge(ctx context.Context, u domain.User, id int64, result string) error {
+	if u.Role != domain.RoleInstructor && !u.ManagesDept() && !u.SeesOrg() {
+		return domain.ErrForbidden
+	}
+	if !domain.ValidKnowledgeResult(result) {
+		return domain.Invalid("Укажите результат проверки знаний")
+	}
+	a, err := s.repo.ScopedAssignment(ctx, u, id)
+	if err != nil {
+		return err
+	}
+	if a.KnowledgeResult != "" || a.RecordPDFPath != "" {
+		return domain.Invalid("Результат проверки знаний уже зафиксирован")
+	}
+	t, err := s.repo.InductionTemplate(ctx, u.OrgID, a.TemplateID)
+	if err != nil {
+		return err
+	}
+	t.Body, t.FilePath = a.MaterialBody, a.MaterialFilePath
+	materialSHA := a.MaterialSHA256
+	if materialSHA == "" {
+		materialHash := sha256.New()
+		materialHash.Write([]byte(t.Body))
+		if t.FilePath != "" {
+			material, err := s.files.Read(u.OrgID, t.FilePath)
+			if err != nil {
+				return err
+			}
+			materialHash.Write(material)
+		}
+		materialSHA = fmt.Sprintf("%x", materialHash.Sum(nil))
+	}
+	org, err := s.dir.Org(ctx, u.OrgID)
+	if err != nil {
+		return err
+	}
+	instructor := a.Instructor
+	if a.InstructorPos != "" {
+		instructor += ", " + a.InstructorPos
+	}
+	pdfBytes, sum, err := s.protocol.Build(domain.ProtocolInput{
+		Org: org, Template: t, Batch: a.Batch, AssignmentID: a.ID, AssignedAt: a.AssignedAt, DueAt: a.DueAt,
+		Worker: a.UserName, BirthYear: a.BirthYear, Position: a.Position, Department: a.Department, Instructor: instructor,
+		Location: a.WorkLocation, Reason: a.Reason, Basis: a.Basis, WorkType: a.WorkType, Docs: a.Docs,
+		KnowledgeResult: result, MaterialSHA: materialSHA,
+	})
+	if err != nil {
+		return err
+	}
+	pdfPath, err := s.files.Save(u.OrgID, domain.Upload{Name: fmt.Sprintf("induction-%d.pdf", a.ID), Size: int64(len(pdfBytes)), Content: bytes.NewReader(pdfBytes)}, "application/pdf")
+	if err != nil {
+		return err
+	}
+	return s.repo.SaveKnowledgeRecord(ctx, u, id, result, pdfPath, sum)
 }
 
 func (s *Service) KioskState(ctx context.Context, u domain.User, batch string) (domain.KioskState, error) {

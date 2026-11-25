@@ -23,53 +23,62 @@ type InductionTemplate struct {
 func (t InductionTemplate) TitleIn(lang string) string { return titleIn(lang, t.Title, t.TitleKK) }
 
 type Assignment struct {
-	ID                   int64      `db:"id"`
-	TemplateID           int64      `db:"template_id"`
-	UserID               int64      `db:"user_id"`
-	Batch                string     `db:"batch"`
-	Reason               string     `db:"reason"`
-	LocationID           *int64     `db:"location_id"`
-	WorkLocation         string     `db:"work_location"`
-	Basis                string     `db:"basis"`
-	WorkType             string     `db:"work_type"`
-	Docs                 string     `db:"docs"`
-	AssignedAt           time.Time  `db:"assigned_at"`
-	DueAt                time.Time  `db:"due_at"`
-	SignedAt             *time.Time `db:"signed_at"`
-	Signature            string     `db:"signature"`
-	SelfiePath           string     `db:"selfie_path"`
-	GeoOK                *bool      `db:"geo_ok"`
-	Title                string     `db:"title"`
-	TitleKK              string     `db:"title_kk"`
-	Kind                 string     `db:"kind"`
-	UserName             string     `db:"user_name"`
-	BirthYear            *int       `db:"birth_year"`
-	Position             string     `db:"position"`
-	Department           string     `db:"department"`
-	Instructor           string     `db:"instructor"`
-	InstructorPos        string     `db:"instructor_pos"`
-	UserIIN              string     `db:"user_iin"`
-	SignerIIN            string     `db:"iin"`
-	SignerName           string     `db:"signer_name"`
-	CMS                  string     `db:"cms"`
-	SIGEXSignID          *int64     `db:"sigex_sign_id"`
-	InstructorSignedAt   *time.Time `db:"instructor_signed_at"`
-	InstructorSignerIIN  string     `db:"instructor_signer_iin"`
-	InstructorSignerName string     `db:"instructor_signer_name"`
-	SIGEXID              string     `db:"sigex_id"`
-	InternshipShifts     *int       `db:"internship_shifts"`
-	InternshipFrom       *time.Time `db:"internship_from"`
-	InternshipTo         *time.Time `db:"internship_to"`
-	AdmittedAt           *time.Time `db:"admitted_at"`
-	AdmittedByName       string     `db:"admitted_by_name"`
+	ID                    int64      `db:"id"`
+	TemplateID            int64      `db:"template_id"`
+	UserID                int64      `db:"user_id"`
+	Batch                 string     `db:"batch"`
+	Reason                string     `db:"reason"`
+	LocationID            *int64     `db:"location_id"`
+	WorkLocation          string     `db:"work_location"`
+	Basis                 string     `db:"basis"`
+	WorkType              string     `db:"work_type"`
+	Docs                  string     `db:"docs"`
+	AssignedAt            time.Time  `db:"assigned_at"`
+	DueAt                 time.Time  `db:"due_at"`
+	SignedAt              *time.Time `db:"signed_at"`
+	Signature             string     `db:"signature"`
+	SelfiePath            string     `db:"selfie_path"`
+	GeoOK                 *bool      `db:"geo_ok"`
+	Title                 string     `db:"title"`
+	TitleKK               string     `db:"title_kk"`
+	Kind                  string     `db:"kind"`
+	UserName              string     `db:"user_name"`
+	BirthYear             *int       `db:"birth_year"`
+	Position              string     `db:"position"`
+	Department            string     `db:"department"`
+	Instructor            string     `db:"instructor"`
+	InstructorPos         string     `db:"instructor_pos"`
+	InstructorIIN         string     `db:"instructor_iin"`
+	KnowledgeResult       string     `db:"knowledge_result"`
+	RecordPDFPath         string     `db:"record_pdf_path"`
+	RecordSHA256          string     `db:"record_sha256"`
+	UserIIN               string     `db:"user_iin"`
+	SignerIIN             string     `db:"iin"`
+	SignerName            string     `db:"signer_name"`
+	CMS                   string     `db:"cms"`
+	SIGEXSignID           *int64     `db:"sigex_sign_id"`
+	InstructorSignedAt    *time.Time `db:"instructor_signed_at"`
+	InstructorSignerIIN   string     `db:"instructor_signer_iin"`
+	InstructorSignerName  string     `db:"instructor_signer_name"`
+	InstructorCMS         string     `db:"instructor_cms"`
+	InstructorSIGEXSignID *int64     `db:"instructor_sign_id"`
+	SIGEXID               string     `db:"sigex_id"`
+	MaterialBody          string     `db:"material_body"`
+	MaterialFilePath      string     `db:"material_file_path"`
+	MaterialSHA256        string     `db:"material_sha256"`
+	InternshipShifts      *int       `db:"internship_shifts"`
+	InternshipFrom        *time.Time `db:"internship_from"`
+	InternshipTo          *time.Time `db:"internship_to"`
+	AdmittedAt            *time.Time `db:"admitted_at"`
+	AdmittedByName        string     `db:"admitted_by_name"`
 }
 
 // CanAdmit — допуск к самостоятельной работе оформляется после подписанного первичного инструктажа, один раз.
 func (a Assignment) CanAdmit() bool {
-	return a.Kind == "primary" && a.SignedAt != nil && a.AdmittedAt == nil
+	return a.Kind == "primary" && a.KnowledgeResult == KnowledgePassed && a.SignedAt != nil && a.InstructorSignedAt != nil && a.AdmittedAt == nil
 }
 
-// Internship — строка колонки «Стажировка» журнала на рабочем месте.
+// Internship — сведения отдельного процесса стажировки и допуска (не колонка формы журнала приложения 17).
 func (a Assignment) Internship() string {
 	switch {
 	case a.InternshipShifts == nil:
@@ -166,18 +175,41 @@ type KioskState struct {
 }
 
 type ProtocolInput struct {
-	Org         Org
-	Template    InductionTemplate
-	Batch       string
-	AssignedAt  time.Time
-	DueAt       time.Time
-	Instructor  string
-	Location    string
-	Reason      string
-	Basis       string
-	WorkType    string
-	Docs        string
-	MaterialSHA string
+	Org             Org
+	Template        InductionTemplate
+	Batch           string
+	AssignedAt      time.Time
+	DueAt           time.Time
+	Instructor      string
+	Location        string
+	Reason          string
+	Basis           string
+	WorkType        string
+	Docs            string
+	MaterialSHA     string
+	AssignmentID    int64
+	Worker          string
+	BirthYear       *int
+	Position        string
+	Department      string
+	KnowledgeResult string
+}
+
+const (
+	KnowledgePassed = "passed"
+	KnowledgeFailed = "failed"
+)
+
+func ValidKnowledgeResult(v string) bool { return v == KnowledgePassed || v == KnowledgeFailed }
+
+func KnowledgeResultLabel(v string) string {
+	if v == KnowledgePassed {
+		return "прошёл"
+	}
+	if v == KnowledgeFailed {
+		return "не прошёл"
+	}
+	return ""
 }
 
 // Notice — кому и о чём напомнить по SMS.

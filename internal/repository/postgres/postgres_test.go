@@ -166,6 +166,11 @@ func TestJournalAndExpiring(t *testing.T) {
 			t.Fatal("повторная подпись не должна проходить")
 		}
 	}
+	_, err = db.Exec(ctx, `UPDATE induction_assignments SET knowledge_result='passed' WHERE org_id=$1 AND batch LIKE 'b-%'`, f.org)
+	must(t, err)
+	_, err = db.Exec(ctx, `INSERT INTO induction_records (assignment_id, org_id, pdf_path, sha256, instructor_signed_at)
+		SELECT id, org_id, '/files/record.pdf', 'sha', now() FROM induction_assignments WHERE org_id=$1 AND batch LIKE 'b-%'`, f.org)
+	must(t, err)
 
 	intro, _ := s.Journal(ctx, viewer, []string{"intro"}, domain.JournalFilter{})
 	work, _ := s.Journal(ctx, viewer, domain.WorkplaceKinds, domain.JournalFilter{})
@@ -276,7 +281,10 @@ func TestRoleScopes(t *testing.T) {
 	batch := fmt.Sprintf("scope-%d", f.org)
 	_, err := s.CreateAssignments(ctx, hse, templates[0].ID, &instructorID, nil, batch, "", "", "", "", time.Now().AddDate(0, 0, 1), []int64{rootWorker, childWorker, otherWorker}, testInductionDoc(f.org, batch))
 	must(t, err)
-	_, err = db.Exec(ctx, `UPDATE induction_assignments SET signed_at = now() WHERE batch = $1 AND org_id = $2`, batch, f.org)
+	_, err = db.Exec(ctx, `UPDATE induction_assignments SET signed_at = now(), knowledge_result='passed' WHERE batch = $1 AND org_id = $2`, batch, f.org)
+	must(t, err)
+	_, err = db.Exec(ctx, `INSERT INTO induction_records (assignment_id, org_id, pdf_path, sha256, instructor_signed_at)
+		SELECT id, org_id, '/files/record.pdf', 'sha', now() FROM induction_assignments WHERE batch=$1 AND org_id=$2`, batch, f.org)
 	must(t, err)
 	for name, tc := range map[string]struct {
 		viewer domain.User
@@ -294,7 +302,7 @@ func TestRoleScopes(t *testing.T) {
 		}
 		kpi, err := s.InstructionKPI(ctx, tc.viewer)
 		must(t, err)
-		if kpi.Total != 1 || kpi.WaitingInstructor != 1 {
+		if kpi.Total != 1 || kpi.Completed != 1 {
 			t.Errorf("%s dashboard KPI = %+v", name, kpi)
 		}
 		deps, err := s.InstructionDepartments(ctx, tc.viewer)
@@ -335,6 +343,56 @@ func TestAssignmentFieldsPersistence(t *testing.T) {
 	must(t, err)
 	if len(users) != 1 || users[0].Position != "Электромонтажник" {
 		t.Fatalf("данные для валидации: %+v", users)
+	}
+	_, err = db.Exec(ctx, `UPDATE users SET name='Новое имя', position='Новая должность' WHERE id=$1`, worker)
+	must(t, err)
+	rows, err = s.BatchAssignments(ctx, viewer, batch)
+	must(t, err)
+	if rows[0].UserName == "Новое имя" || rows[0].Position == "Новая должность" {
+		t.Fatalf("снимок записи изменился вместе с карточкой сотрудника: %+v", rows[0])
+	}
+}
+
+func TestAssignmentRecordEDSOrder(t *testing.T) {
+	s, db := testStore(t)
+	f := newFixture(t, db)
+	worker, instructor := f.user(domain.RoleWorker), f.user(domain.RoleInstructor)
+	_, err := db.Exec(ctx, `UPDATE users SET iin=CASE id WHEN $1 THEN '900101300017' ELSE '900101300027' END,
+		name=CASE id WHEN $1 THEN 'Работник' ELSE 'Инструктор' END WHERE id=ANY($2)`, worker, []int64{worker, instructor})
+	must(t, err)
+	must(t, s.SaveInductionTemplate(ctx, f.org, domain.InductionTemplate{Title: "Персональная запись", Kind: "primary"}))
+	templates, _ := s.InductionTemplates(ctx, f.org)
+	batch := fmt.Sprintf("record-%d", f.org)
+	viewer := domain.User{ID: instructor, OrgID: f.org, Role: domain.RoleHSE}
+	_, err = s.CreateAssignments(ctx, viewer, templates[0].ID, &instructor, &f.loc, batch, "", "", "", "", time.Now(),
+		[]int64{worker}, testInductionDoc(f.org, batch))
+	must(t, err)
+	rows, err := s.BatchAssignments(ctx, viewer, batch)
+	must(t, err)
+	id := rows[0].ID
+
+	instructorSig := domain.EDSSignature{IIN: "900101300027", Name: "Инструктор", CMS: "cms-i", SIGEXID: "doc", SignID: 2}
+	if err := s.ApplyAssignmentEDS(ctx, viewer, id, true, instructorSig); err == nil {
+		t.Fatal("нельзя подписать запись до фиксации результата")
+	}
+	must(t, s.SaveKnowledgeRecord(ctx, viewer, id, domain.KnowledgePassed, "/files/record.pdf", "sha"))
+	if err := s.SaveKnowledgeRecord(ctx, viewer, id, domain.KnowledgeFailed, "/files/changed.pdf", "changed"); err == nil {
+		t.Fatal("замороженный результат нельзя заменить")
+	}
+	if err := s.ApplyAssignmentEDS(ctx, viewer, id, true, instructorSig); err == nil {
+		t.Fatal("инструктор не должен подписывать раньше работника")
+	}
+	wrong := domain.EDSSignature{IIN: "900101300099", Name: "Чужой", CMS: "cms-x", SIGEXID: "doc", SignID: 1}
+	if err := s.ApplyAssignmentEDS(ctx, viewer, id, false, wrong); err == nil {
+		t.Fatal("чужой ИИН должен быть отклонён")
+	}
+	workerSig := domain.EDSSignature{IIN: "900101300017", Name: "Работник", CMS: "cms-w", SIGEXID: "doc", SignID: 1}
+	must(t, s.ApplyAssignmentEDS(ctx, viewer, id, false, workerSig))
+	must(t, s.ApplyAssignmentEDS(ctx, viewer, id, true, instructorSig))
+	a, err := s.ScopedAssignment(ctx, viewer, id)
+	must(t, err)
+	if a.KnowledgeResult != domain.KnowledgePassed || a.SignedAt == nil || a.InstructorSignedAt == nil || a.SIGEXID != "doc" {
+		t.Fatalf("неполная подписанная запись: %+v", a)
 	}
 }
 
@@ -445,7 +503,10 @@ func TestAdmitAssignment(t *testing.T) {
 	if err := s.AdmitAssignment(ctx, viewer, id, in, "Инженер"); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("допуск до подписи: %v", err)
 	}
-	_, err = db.Exec(ctx, `UPDATE induction_assignments SET signed_at = now() WHERE id = $1`, id)
+	_, err = db.Exec(ctx, `UPDATE induction_assignments SET signed_at = now(), knowledge_result='passed' WHERE id = $1`, id)
+	must(t, err)
+	_, err = db.Exec(ctx, `INSERT INTO induction_records (assignment_id, org_id, pdf_path, sha256, instructor_signed_at)
+		VALUES ($1,$2,'/files/record.pdf','sha',now())`, id, f.org)
 	must(t, err)
 	stranger := domain.User{ID: other.user(domain.RoleHSE), OrgID: other.org, Role: domain.RoleHSE}
 	if err := s.AdmitAssignment(ctx, stranger, id, in, "Чужой"); !errors.Is(err, domain.ErrNotFound) {

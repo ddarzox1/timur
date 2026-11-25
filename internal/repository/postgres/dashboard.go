@@ -10,13 +10,13 @@ import (
 const dashboardSessionsCTE = `WITH scoped_sessions AS (
 	SELECT a.batch, min(t.title) AS title, min(t.kind) AS kind, min(a.assigned_at) AS assigned_at,
 		max(a.due_at)::timestamptz AS due_at, count(*)::int AS total, count(a.signed_at)::int AS signed,
-		max(ed.instructor_signed_at) AS instructor_signed_at,
+		CASE WHEN count(ir.instructor_signed_at)=count(*) THEN max(ir.instructor_signed_at) END AS instructor_signed_at,
 		string_agg(DISTINCT coalesce(d.name, 'Без подразделения'), ', ') AS department
 	FROM induction_assignments a
 	JOIN induction_templates t ON t.id=a.template_id
 	JOIN users u ON u.id=a.user_id
 	LEFT JOIN departments d ON d.id=u.department_id
-	LEFT JOIN induction_docs ed ON ed.org_id=a.org_id AND ed.batch=a.batch
+	LEFT JOIN induction_records ir ON ir.assignment_id=a.id
 	WHERE a.org_id=$1 AND ($2::bigint[] IS NULL OR u.department_id=ANY($2) OR ($3='instructor' AND a.instructor_id=$4))
 	GROUP BY a.batch
 ) `
@@ -174,7 +174,8 @@ func (s *Store) ExpiringRepeats(ctx context.Context, viewer domain.User, days in
 		SELECT DISTINCT ON (a.user_id, a.template_id) a.user_id, u.name AS user_name, a.template_id, t.title,
 			(a.signed_at + make_interval(months => t.repeat_months))::date AS next_due
 		FROM induction_assignments a JOIN induction_templates t ON t.id = a.template_id JOIN users u ON u.id = a.user_id
-		WHERE a.org_id = $1 AND a.signed_at IS NOT NULL AND t.repeat_months > 0 AND u.active
+		JOIN induction_records ir ON ir.assignment_id=a.id AND ir.instructor_signed_at IS NOT NULL
+		WHERE a.org_id = $1 AND a.signed_at IS NOT NULL AND a.knowledge_result='passed' AND t.repeat_months > 0 AND u.active
 		AND ($3::bigint[] IS NULL OR u.department_id = ANY($3) OR ($4 = 'instructor' AND a.instructor_id = $5))
 		ORDER BY a.user_id, a.template_id, a.signed_at DESC) x
 		WHERE x.next_due <= current_date + $2::int

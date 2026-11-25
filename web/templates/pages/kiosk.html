@@ -1,18 +1,18 @@
 {{define "page"}}{{template "admin" .}}{{end}}
 {{define "title"}}QR-киоск{{end}}
 {{define "content"}}
-<div class="row between"><div><a href="/admin/assignments?batch={{.Batch}}">{{template "i" "chevron-left"}}Назначения</a><h1>QR-киоск</h1></div><a class="btn" href="{{.State.Doc.PDFPath}}" target="_blank">PDF-протокол</a></div>
+<div class="row between"><div><a href="/admin/assignments?batch={{.Batch}}">{{template "i" "chevron-left"}}Назначения</a><h1>QR-киоск</h1></div></div>
 <div class="grid split">
   <div class="card">
     <h3>Партия {{.Batch}}</h3>
     <p>Участники: <b>{{.State.Signed}} / {{.State.Total}}</b></p>
-    <p>Посетители: {{if .State.Doc.AllowVisitors}}<span class="badge ok">разрешены</span>{{else}}<span class="badge">запрещены</span>{{end}}</p>
-    {{if .State.Doc.InstructorSignedAt}}<p><span class="badge ok">Инструктирующий подписал {{datetime .State.Doc.InstructorSignedAt}}</span></p><a class="btn primary" href="/admin/sessions/{{.Batch}}/ddc" target="_blank">Скачать DDC</a>
-    {{else if .OpID}}<div hx-get="/admin/sessions/{{.Batch}}/kiosk/{{.OpID}}" hx-trigger="load" hx-swap="outerHTML">Готовим QR…</div>
-    {{else}}<p class="muted">{{if .State.InstructorPending}}Следующим подписывает инструктирующий: {{.State.InstructorName}}{{else}}Следующий участник сканирует QR и подписывает протокол{{end}}</p>
+    <p class="muted small">Для каждого работника используется отдельная неизменяемая запись. Сначала её подписывает работник, затем инструктирующий.</p>
+    {{if .OpID}}<div hx-get="/admin/sessions/{{.Batch}}/kiosk/{{.OpID}}" hx-trigger="load" hx-swap="outerHTML">Готовим QR…</div>
+    {{else}}<p class="muted">Система выберет следующую подготовленную запись и проверит ИИН подписанта.</p>
       <form method="post" action="/admin/sessions/{{.Batch}}/kiosk"><button class="btn accent big" type="submit">Показать новый QR</button></form>{{end}}
   </div>
-  <div class="card"><h3>Участники</h3>{{range .Rows}}<p class="row between"><span>{{.UserName}}<br><small class="muted">{{.UserIIN}}</small></span>{{if .SignedAt}}<span class="badge ok">подписал</span>{{else}}<span class="badge">ожидает</span>{{end}}</p>{{end}}</div>
+  <div class="card"><h3>Участники</h3>{{range .Rows}}<p class="row between"><span>{{.UserName}}<br><small class="muted">{{.UserIIN}} · {{knowledge .KnowledgeResult}}</small></span>
+    <span>{{if .InstructorSignedAt}}<span class="badge ok">обе подписи</span>{{else if .SignedAt}}<span class="badge info">нужна подпись инструктора</span>{{else if .KnowledgeResult}}<span class="badge">ожидает работника</span>{{else}}<span class="badge danger">нет результата</span>{{end}}</span></p>{{end}}</div>
 </div>
 {{end}}
 

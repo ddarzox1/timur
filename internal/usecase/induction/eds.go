@@ -10,6 +10,7 @@ import (
 
 type SigningOperation struct {
 	ID, Batch, QRCode, LaunchLink string
+	AssignmentID                  int64
 	Done, Instructor              bool
 	Error                         string
 	SignedBy                      string
@@ -17,18 +18,40 @@ type SigningOperation struct {
 }
 
 type operationState struct {
-	mu         sync.Mutex
-	viewer     domain.User
-	batch      string
-	op         EDSOperation
-	done       bool
-	instructor bool
-	err        error
-	signedBy   string
+	mu           sync.Mutex
+	viewer       domain.User
+	batch        string
+	assignmentID int64
+	expectedIIN  string
+	op           EDSOperation
+	done         bool
+	instructor   bool
+	err          error
+	signedBy     string
 }
 
 func (s *Service) StartKiosk(ctx context.Context, u domain.User, batch string) (SigningOperation, error) {
-	return s.startSigning(ctx, u, batch)
+	rows, err := s.repo.BatchAssignments(ctx, u, batch)
+	if err != nil {
+		return SigningOperation{}, err
+	}
+	// Завершаем подпись текущей записи инструктирующим до перехода к следующему работнику.
+	for _, a := range rows {
+		if a.SignedAt != nil && a.InstructorSignedAt == nil && a.RecordPDFPath != "" {
+			return s.startAssignmentSigning(ctx, u, a, true)
+		}
+	}
+	for _, a := range rows {
+		if a.SignedAt == nil && a.KnowledgeResult != "" && a.RecordPDFPath != "" {
+			return s.startAssignmentSigning(ctx, u, a, false)
+		}
+	}
+	for _, a := range rows {
+		if a.KnowledgeResult == "" {
+			return SigningOperation{}, domain.Invalid("Сначала зафиксируйте результат проверки знаний для участников")
+		}
+	}
+	return SigningOperation{}, domain.Invalid("Все записи партии уже подписаны")
 }
 
 func (s *Service) StartMobile(ctx context.Context, u domain.User, assignmentID int64) (SigningOperation, error) {
@@ -45,26 +68,34 @@ func (s *Service) StartMobile(ctx context.Context, u domain.User, assignmentID i
 	// Доступ уже доказан назначением; технический viewer нужен только для чтения партии.
 	viewer := u
 	viewer.Role = domain.RoleHSE
-	return s.startSigning(ctx, viewer, a.Batch)
+	if a.KnowledgeResult == "" || a.RecordPDFPath == "" {
+		return SigningOperation{}, domain.Invalid("Инструктирующий ещё не зафиксировал результат проверки знаний")
+	}
+	return s.startAssignmentSigning(ctx, viewer, a, false)
 }
 
-func (s *Service) startSigning(ctx context.Context, u domain.User, batch string) (SigningOperation, error) {
-	state, err := s.repo.KioskState(ctx, u, batch)
+func (s *Service) startAssignmentSigning(ctx context.Context, u domain.User, a domain.Assignment, instructor bool) (SigningOperation, error) {
+	if a.RecordPDFPath == "" {
+		return SigningOperation{}, domain.Invalid("Запись ещё не подготовлена к подписанию")
+	}
+	expectedIIN := a.UserIIN
+	label := "Запись инструктажа работника " + a.UserName
+	if instructor {
+		expectedIIN = a.InstructorIIN
+		label = "Подтверждение инструктажа работника " + a.UserName
+	}
+	if !domain.ValidIIN(expectedIIN) {
+		return SigningOperation{}, domain.Invalid("У ожидаемого подписанта не указан корректный ИИН")
+	}
+	payload, err := s.files.Read(u.OrgID, a.RecordPDFPath)
 	if err != nil {
 		return SigningOperation{}, err
 	}
-	if state.Doc.InstructorSignedAt != nil {
-		return SigningOperation{}, domain.Invalid("Протокол уже полностью подписан")
-	}
-	payload, err := s.files.Read(u.OrgID, state.Doc.PDFPath)
+	op, err := s.eds.Start(ctx, payload, label)
 	if err != nil {
 		return SigningOperation{}, err
 	}
-	op, err := s.eds.Start(ctx, payload, "Протокол инструктажа "+batch)
-	if err != nil {
-		return SigningOperation{}, err
-	}
-	x := &operationState{viewer: u, batch: batch, op: op, instructor: state.InstructorPending}
+	x := &operationState{viewer: u, batch: a.Batch, assignmentID: a.ID, expectedIIN: expectedIIN, op: op, instructor: instructor}
 	s.ops.Store(op.ID, x)
 	return signingView(x), nil
 }
@@ -96,26 +127,26 @@ func (s *Service) SigningStatus(ctx context.Context, u domain.User, operationID 
 		x.err = domain.Invalid("SIGEX вернул некорректный ИИН подписанта")
 		return signingView(x), nil
 	}
-	if err := s.repo.CanSignBatch(ctx, x.viewer, x.batch, r.IIN); err != nil {
-		x.err = err
+	if r.IIN != x.expectedIIN {
+		x.err = domain.Invalid("ИИН подписанта не совпадает с ожидаемым ИИН")
 		return signingView(x), nil
 	}
-	state, err := s.repo.KioskState(ctx, x.viewer, x.batch)
+	a, err := s.repo.ScopedAssignment(ctx, x.viewer, x.assignmentID)
 	if err != nil {
 		x.err = err
 		return signingView(x), nil
 	}
-	payload, err := s.files.Read(u.OrgID, state.Doc.PDFPath)
+	payload, err := s.files.Read(u.OrgID, a.RecordPDFPath)
 	if err != nil {
 		x.err = err
 		return signingView(x), nil
 	}
-	docID, signID, err := s.eds.Register(ctx, state.Doc.SIGEXID, payload, r.CMS)
+	docID, signID, err := s.eds.Register(ctx, a.SIGEXID, payload, r.CMS)
 	if err != nil {
 		x.err = err
 		return signingView(x), nil
 	}
-	err = s.repo.ApplyBatchEDS(ctx, x.viewer, x.batch, domain.EDSSignature{
+	err = s.repo.ApplyAssignmentEDS(ctx, x.viewer, x.assignmentID, x.instructor, domain.EDSSignature{
 		IIN: r.IIN, Name: r.Name, CMS: r.CMS, SIGEXID: docID, SignID: signID,
 	})
 	if err != nil {
@@ -127,7 +158,7 @@ func (s *Service) SigningStatus(ctx context.Context, u domain.User, operationID 
 }
 
 func signingView(x *operationState) SigningOperation {
-	v := SigningOperation{ID: x.op.ID, Batch: x.batch, QRCode: x.op.QRCode, LaunchLink: x.op.LaunchLink,
+	v := SigningOperation{ID: x.op.ID, Batch: x.batch, AssignmentID: x.assignmentID, QRCode: x.op.QRCode, LaunchLink: x.op.LaunchLink,
 		Done: x.done, Instructor: x.instructor, SignedBy: x.signedBy, state: x}
 	if x.err != nil {
 		v.Error = x.err.Error()
@@ -142,14 +173,17 @@ func (s *Service) CompleteFake(operationID, iin, name string) error {
 	return s.eds.Complete(operationID, domain.NormalizeIIN(iin), name)
 }
 
-func (s *Service) DDC(ctx context.Context, u domain.User, batch string) ([]byte, error) {
-	state, err := s.repo.KioskState(ctx, u, batch)
+func (s *Service) DDC(ctx context.Context, u domain.User, assignmentID int64) ([]byte, error) {
+	a, err := s.repo.ScopedAssignment(ctx, u, assignmentID)
 	if err != nil {
 		return nil, err
 	}
-	payload, err := s.files.Read(u.OrgID, state.Doc.PDFPath)
+	if a.SIGEXID == "" || a.RecordPDFPath == "" {
+		return nil, domain.Invalid("Запись ещё не подписана")
+	}
+	payload, err := s.files.Read(u.OrgID, a.RecordPDFPath)
 	if err != nil {
 		return nil, err
 	}
-	return s.eds.BuildDDC(ctx, state.Doc.SIGEXID, payload)
+	return s.eds.BuildDDC(ctx, a.SIGEXID, payload)
 }

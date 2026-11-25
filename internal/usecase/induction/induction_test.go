@@ -15,22 +15,23 @@ var ctx = context.Background()
 
 type memRepo struct {
 	Repo
-	templates   map[int64]domain.InductionTemplate
-	assigns     map[int64]domain.Assignment
-	signed      map[int64]domain.Signature
-	created     []int64
-	reason      string
-	instr       *int64
-	unsigned    []domain.Notice
-	users       map[int64]domain.User
-	location    *int64
-	basis       string
-	workType    string
-	docs        string
-	kiosk       domain.KioskState
-	expectedIIN string
-	edsSigns    []domain.EDSSignature
-	admitBy     string
+	templates                               map[int64]domain.InductionTemplate
+	assigns                                 map[int64]domain.Assignment
+	signed                                  map[int64]domain.Signature
+	created                                 []int64
+	reason                                  string
+	instr                                   *int64
+	unsigned                                []domain.Notice
+	users                                   map[int64]domain.User
+	location                                *int64
+	basis                                   string
+	workType                                string
+	docs                                    string
+	kiosk                                   domain.KioskState
+	expectedIIN                             string
+	edsSigns                                []domain.EDSSignature
+	admitBy                                 string
+	materialBody, materialFile, materialSHA string
 }
 
 func (m *memRepo) AdmitAssignment(_ context.Context, _ domain.User, _ int64, _ domain.AdmitInput, by string) error {
@@ -103,6 +104,55 @@ func (m *memRepo) ApplyBatchEDS(_ context.Context, _ domain.User, _ string, sig 
 	m.edsSigns = append(m.edsSigns, sig)
 	return nil
 }
+func (m *memRepo) BatchAssignments(_ context.Context, viewer domain.User, batch string) ([]domain.Assignment, error) {
+	if viewer.OrgID != 1 {
+		return nil, domain.ErrNotFound
+	}
+	var out []domain.Assignment
+	for _, a := range m.assigns {
+		if a.Batch == batch {
+			out = append(out, a)
+		}
+	}
+	return out, nil
+}
+func (m *memRepo) ScopedAssignment(_ context.Context, viewer domain.User, id int64) (domain.Assignment, error) {
+	a, ok := m.assigns[id]
+	if !ok || viewer.OrgID != 1 {
+		return domain.Assignment{}, domain.ErrNotFound
+	}
+	return a, nil
+}
+func (m *memRepo) SaveKnowledgeRecord(_ context.Context, _ domain.User, id int64, result, path, sum string) error {
+	a := m.assigns[id]
+	a.KnowledgeResult, a.RecordPDFPath, a.RecordSHA256 = result, path, sum
+	m.assigns[id] = a
+	return nil
+}
+func (m *memRepo) SnapshotBatchMaterial(_ context.Context, _ domain.User, batch, body, path, sum string) error {
+	m.materialBody, m.materialFile, m.materialSHA = body, path, sum
+	for id, a := range m.assigns {
+		if a.Batch == batch {
+			a.MaterialBody, a.MaterialFilePath, a.MaterialSHA256 = body, path, sum
+			m.assigns[id] = a
+		}
+	}
+	return nil
+}
+func (m *memRepo) ApplyAssignmentEDS(_ context.Context, _ domain.User, id int64, instructor bool, sig domain.EDSSignature) error {
+	m.edsSigns = append(m.edsSigns, sig)
+	a := m.assigns[id]
+	if instructor {
+		now := time.Now()
+		a.InstructorSignedAt = &now
+	} else {
+		now := time.Now()
+		a.SignedAt = &now
+	}
+	a.SIGEXID = sig.SIGEXID
+	m.assigns[id] = a
+	return nil
+}
 
 type dir struct{}
 
@@ -118,7 +168,7 @@ func (dir) UserName(_ context.Context, org, id int64) (string, error) {
 }
 func (dir) DirectoryUser(_ context.Context, org, id int64) (domain.User, error) {
 	if org == 1 && id < 100 {
-		return domain.User{ID: id, OrgID: org, Name: "Айгерим", IIN: "870514300470"}, nil
+		return domain.User{ID: id, OrgID: org, Name: "Айгерим", Position: "Инженер БиОТ", IIN: "870514300470"}, nil
 	}
 	return domain.User{}, domain.ErrNotFound
 }
@@ -158,6 +208,7 @@ func (s *sms) Send(phone, text string) error { s.sent = append(s.sent, phone+" "
 
 var (
 	loc    = int64(7)
+	year   = 1990
 	worker = domain.User{ID: 10, OrgID: 1, Role: domain.RoleWorker, LocationID: &loc}
 	hse    = domain.User{ID: 1, OrgID: 1, Role: domain.RoleHSE}
 	sig    = "data:image/png;base64," + base64.StdEncoding.EncodeToString([]byte("\x89PNG\r\n\x1a\n"+strings.Repeat("x", 300)))
@@ -176,11 +227,12 @@ func setup() (*Service, *memRepo, *sms) {
 		assigns: map[int64]domain.Assignment{
 			100: {ID: 100, TemplateID: 1, UserID: 10},
 			101: {ID: 101, TemplateID: 3, UserID: 10},
+			200: {ID: 200, TemplateID: 1, UserID: 999, Batch: "b", UserName: "Иван Иванов", UserIIN: "900101300017", KnowledgeResult: domain.KnowledgePassed, RecordPDFPath: "/files/1/record.pdf"},
 		},
 		signed: map[int64]domain.Signature{},
 		users: map[int64]domain.User{
-			10: {ID: 10, Position: "Монтажник", IIN: "900101300017"},
-			11: {ID: 11, Position: "Сварщик", IIN: "900101300027"},
+			10: {ID: 10, BirthYear: &year, Position: "Монтажник", IIN: "900101300017"},
+			11: {ID: 11, BirthYear: &year, Position: "Сварщик", IIN: "900101300027"},
 		},
 		kiosk:       domain.KioskState{Doc: domain.InductionDoc{OrgID: 1, Batch: "b", PDFPath: "/files/1/p.pdf"}, Total: 1},
 		expectedIIN: "900101300017",
@@ -252,11 +304,11 @@ func TestAssign(t *testing.T) {
 	if _, err := s.Assign(ctx, hse, AssignInput{TemplateID: tpl(4), Due: &due, UserIDs: []int64{10}}); !isInvalid(err, "рабочее место") {
 		t.Fatalf("первичный без рабочего места: %v", err)
 	}
-	repo.users[10] = domain.User{ID: 10, IIN: "900101300017"}
+	repo.users[10] = domain.User{ID: 10, BirthYear: &year, IIN: "900101300017"}
 	if _, err := s.Assign(ctx, hse, AssignInput{TemplateID: tpl(4), Due: &due, UserIDs: []int64{10}, LocationID: &loc}); !isInvalid(err, "профессия") {
 		t.Fatalf("первичный без должности: %v", err)
 	}
-	repo.users[10] = domain.User{ID: 10, Position: "Монтажник", IIN: "900101300017"}
+	repo.users[10] = domain.User{ID: 10, BirthYear: &year, Position: "Монтажник", IIN: "900101300017"}
 	if _, err := s.Assign(ctx, hse, AssignInput{TemplateID: tpl(5), Due: &due, UserIDs: []int64{10}}); !isInvalid(err, "основание") {
 		t.Fatalf("целевой без полей: %v", err)
 	}
@@ -272,8 +324,26 @@ func TestAssign(t *testing.T) {
 	if len(sms.sent) != 1 || !strings.Contains(sms.sent[0], "https://q.kz/m/inductions/555") {
 		t.Fatalf("SMS: %v", sms.sent)
 	}
+	if repo.materialSHA == "" {
+		t.Fatal("версия материала не зафиксирована при назначении")
+	}
 	if err := s.Remind(ctx, domain.User{OrgID: 2, Role: domain.RoleHSE}, "b"); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatal("чужая партия назначений")
+	}
+}
+
+func TestOpenUsesMaterialSnapshot(t *testing.T) {
+	s, repo, _ := setup()
+	repo.templates[1] = domain.InductionTemplate{ID: 1, Kind: "repeat", Body: "новая редакция", FilePath: "/new.pdf"}
+	a := repo.assigns[100]
+	a.MaterialBody, a.MaterialFilePath = "редакция при назначении", "/assigned.pdf"
+	repo.assigns[100] = a
+	r, err := s.Open(ctx, worker, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Template.Body != "редакция при назначении" || r.Template.FilePath != "/assigned.pdf" {
+		t.Fatalf("сотруднику показана изменённая версия материала: %+v", r.Template)
 	}
 }
 
@@ -289,6 +359,26 @@ func TestEDSOperation(t *testing.T) {
 	status, err := s.SigningStatus(ctx, hse, op.ID)
 	if err != nil || !status.Done || len(repo.edsSigns) != 1 || repo.edsSigns[0].SIGEXID != "doc" {
 		t.Fatalf("status=%+v signs=%+v err=%v", status, repo.edsSigns, err)
+	}
+}
+
+func TestKnowledgeFreezesPersonalRecord(t *testing.T) {
+	s, repo, _ := setup()
+	a := repo.assigns[100]
+	a.Batch, a.UserName, a.Position, a.Instructor = "personal", "Иван Иванов", "Монтажник", "Айгерим"
+	repo.assigns[100] = a
+	if _, err := s.StartMobile(ctx, domain.User{ID: 10, OrgID: 1, IIN: "900101300017"}, 100); !isInvalid(err, "результат") {
+		t.Fatalf("подпись до проверки знаний: %v", err)
+	}
+	if err := s.RecordKnowledge(ctx, hse, 100, domain.KnowledgePassed); err != nil {
+		t.Fatal(err)
+	}
+	got := repo.assigns[100]
+	if got.KnowledgeResult != domain.KnowledgePassed || got.RecordPDFPath == "" || got.RecordSHA256 == "" {
+		t.Fatalf("персональная запись не подготовлена: %+v", got)
+	}
+	if err := s.RecordKnowledge(ctx, hse, 100, domain.KnowledgeFailed); !isInvalid(err, "уже") {
+		t.Fatalf("результат удалось заменить: %v", err)
 	}
 }
 

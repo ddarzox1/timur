@@ -55,18 +55,6 @@ func run() error {
 			return err
 		}
 	}
-	provisioned, withoutIIN, err := postgres.ProvisionInitialPasswords(ctx, pool)
-	if err != nil {
-		return err
-	}
-	for _, p := range provisioned {
-		slog.Warn("выдан первичный пароль существующему сотруднику; передайте его пользователю и удалите запись из логов",
-			"user_id", p.UserID, "name", p.Name, "iin", p.IIN, "password", p.Password)
-	}
-	if len(withoutIIN) > 0 {
-		slog.Warn("активным сотрудникам без корректного уникального ИИН пароль не выдан", "user_ids", withoutIIN)
-	}
-
 	files, filesOrigin, err := newStorage(ctx, cfg)
 	if err != nil {
 		return err

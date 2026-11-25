@@ -173,10 +173,12 @@ func TestAdmitInputValidate(t *testing.T) {
 		}
 	}
 	now := time.Now()
-	if !(Assignment{Kind: "primary", SignedAt: &now}).CanAdmit() ||
-		(Assignment{Kind: "repeat", SignedAt: &now}).CanAdmit() ||
+	complete := Assignment{Kind: "primary", KnowledgeResult: KnowledgePassed, SignedAt: &now, InstructorSignedAt: &now}
+	if !complete.CanAdmit() ||
+		(Assignment{Kind: "repeat", KnowledgeResult: KnowledgePassed, SignedAt: &now, InstructorSignedAt: &now}).CanAdmit() ||
 		(Assignment{Kind: "primary"}).CanAdmit() ||
-		(Assignment{Kind: "primary", SignedAt: &now, AdmittedAt: &now}).CanAdmit() {
-		t.Error("CanAdmit: допуск только после подписанного первичного и один раз")
+		(Assignment{Kind: "primary", KnowledgeResult: KnowledgeFailed, SignedAt: &now, InstructorSignedAt: &now}).CanAdmit() ||
+		(Assignment{Kind: "primary", KnowledgeResult: KnowledgePassed, SignedAt: &now, InstructorSignedAt: &now, AdmittedAt: &now}).CanAdmit() {
+		t.Error("CanAdmit: допуск только после успешной проверки знаний и обеих подписей первичного инструктажа")
 	}
 }

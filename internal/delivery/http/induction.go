@@ -136,7 +136,6 @@ func (h *Handler) assign(w http.ResponseWriter, r *http.Request, u domain.User) 
 		TemplateID: formID(r, "template_id"), UserIDs: formIDs(r, "user_ids"), Due: formDate(r, "due_at"),
 		InstructorID: formID(r, "instructor_id"), LocationID: formID(r, "location_id"), Reason: r.FormValue("reason"),
 		Basis: r.FormValue("basis"), WorkType: r.FormValue("work_type"), Docs: r.FormValue("docs"), NotifySMS: r.FormValue("notify") == "sms",
-		AllowVisitors: r.FormValue("allow_visitors") == "1",
 	})
 	if err != nil {
 		return err
@@ -184,7 +183,7 @@ func (h *Handler) kioskFake(w http.ResponseWriter, r *http.Request, u domain.Use
 }
 
 func (h *Handler) ddc(w http.ResponseWriter, r *http.Request, u domain.User) error {
-	b, err := h.inductions.DDC(r.Context(), u, r.PathValue("batch"))
+	b, err := h.inductions.DDC(r.Context(), u, pathID(r))
 	if err != nil {
 		return err
 	}
@@ -192,6 +191,16 @@ func (h *Handler) ddc(w http.ResponseWriter, r *http.Request, u domain.User) err
 	w.Header().Set("Content-Disposition", `inline; filename="induction-ddc.pdf"`)
 	_, err = w.Write(b)
 	return err
+}
+
+func (h *Handler) knowledgeResult(w http.ResponseWriter, r *http.Request, u domain.User) error {
+	if err := r.ParseForm(); err != nil {
+		return err
+	}
+	if err := h.inductions.RecordKnowledge(r.Context(), u, pathID(r), r.FormValue("result")); err != nil {
+		return err
+	}
+	return redirect(w, r, "/admin/assignments?batch="+url.QueryEscape(r.FormValue("batch")))
 }
 
 func (h *Handler) assignments(w http.ResponseWriter, r *http.Request, u domain.User) error {
@@ -262,22 +271,31 @@ func (h *Handler) journalPrint(w http.ResponseWriter, r *http.Request, u domain.
 }
 
 func (h *Handler) journalCSV(w http.ResponseWriter, r *http.Request, u domain.User) error {
-	rows, err := h.inductions.Journal(r.Context(), u, journalFilter(r))
+	f := journalFilter(r)
+	rows, err := h.inductions.Journal(r.Context(), u, f)
 	if err != nil {
 		return err
 	}
 	cw := startCSV(w, "journal.csv")
-	cw.Write([]string{"Дата", "ФИО", "Год рождения", "Профессия, должность", "Вид инструктажа", "Причина", "Рабочее место", "Основание", "Вид работ", "Документы", "Инструктирующий", "ЭЦП инструктирующего", "ЭЦП инструктируемого", "ИИН (маска)", "SIGEX", "Стажировка", "Допуск к работе"})
+	if f.Workplace {
+		cw.Write([]string{"Дата", "ФИО", "Год рождения", "Профессия, должность", "Вид инструктажа", "Причина внепланового", "Инструктирующий", "Проверка знаний", "ЭЦП инструктирующего", "ЭЦП инструктируемого"})
+	} else {
+		cw.Write([]string{"Дата", "ФИО", "Год рождения", "Профессия, должность", "Подразделение", "Инструктирующий", "ЭЦП инструктирующего", "ЭЦП инструктируемого"})
+	}
 	for _, x := range rows {
 		by := ""
 		if x.BirthYear != nil {
 			by = strconv.Itoa(*x.BirthYear)
 		}
-		cw.Write([]string{fmtDate(x.SignedAt), x.UserName, by, x.Position, domain.KindLabels[x.Kind] + ": " + x.Title, x.Reason,
-			x.WorkLocation, x.Basis, x.WorkType, x.Docs,
-			strings.Trim(x.Instructor+", "+x.InstructorPos, ", "), x.InstructorSignerName + " " + fmtDateTime(x.InstructorSignedAt),
-			x.SignerName + " " + fmtDateTime(x.SignedAt), maskIIN(x.SignerIIN), x.SIGEXID,
-			x.Internship(), strings.TrimSpace(x.AdmittedByName + " " + fmtDate(x.AdmittedAt))})
+		instructor := strings.Trim(x.Instructor+", "+x.InstructorPos, ", ")
+		instructorSign := strings.TrimSpace(x.InstructorSignerName + " " + fmtDateTime(x.InstructorSignedAt))
+		workerSign := strings.TrimSpace(x.SignerName + " " + fmtDateTime(x.SignedAt) + " SIGEX " + x.SIGEXID)
+		if f.Workplace {
+			cw.Write([]string{fmtDate(x.SignedAt), x.UserName, by, x.Position, domain.KindLabels[x.Kind], x.Reason,
+				instructor, domain.KnowledgeResultLabel(x.KnowledgeResult), instructorSign, workerSign})
+		} else {
+			cw.Write([]string{fmtDate(x.SignedAt), x.UserName, by, x.Position, x.Department, instructor, instructorSign, workerSign})
+		}
 	}
 	cw.Flush()
 	return cw.Error()
