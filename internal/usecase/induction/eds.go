@@ -3,7 +3,7 @@ package induction
 import (
 	"context"
 	"fmt"
-	"sync"
+	"time"
 
 	"qauipsiz/internal/domain"
 )
@@ -14,20 +14,6 @@ type SigningOperation struct {
 	Done, Instructor              bool
 	Error                         string
 	SignedBy                      string
-	state                         *operationState
-}
-
-type operationState struct {
-	mu           sync.Mutex
-	viewer       domain.User
-	batch        string
-	assignmentID int64
-	expectedIIN  string
-	op           EDSOperation
-	done         bool
-	instructor   bool
-	err          error
-	signedBy     string
 }
 
 func (s *Service) StartKiosk(ctx context.Context, u domain.User, batch string) (SigningOperation, error) {
@@ -35,7 +21,6 @@ func (s *Service) StartKiosk(ctx context.Context, u domain.User, batch string) (
 	if err != nil {
 		return SigningOperation{}, err
 	}
-	// Завершаем подпись текущей записи инструктирующим до перехода к следующему работнику.
 	for _, a := range rows {
 		if a.SignedAt != nil && a.InstructorSignedAt == nil && a.RecordPDFPath != "" {
 			return s.startAssignmentSigning(ctx, u, a, true)
@@ -65,12 +50,11 @@ func (s *Service) StartMobile(ctx context.Context, u domain.User, assignmentID i
 	if u.IIN == "" {
 		return SigningOperation{}, domain.Invalid("Для подписи ЭЦП укажите ИИН в профиле")
 	}
-	// Доступ уже доказан назначением; технический viewer нужен только для чтения партии.
-	viewer := u
-	viewer.Role = domain.RoleHSE
 	if a.KnowledgeResult == "" || a.RecordPDFPath == "" {
 		return SigningOperation{}, domain.Invalid("Инструктирующий ещё не зафиксировал результат проверки знаний")
 	}
+	viewer := u
+	viewer.Role = domain.RoleHSE
 	return s.startAssignmentSigning(ctx, viewer, a, false)
 }
 
@@ -91,79 +75,127 @@ func (s *Service) startAssignmentSigning(ctx context.Context, u domain.User, a d
 	if err != nil {
 		return SigningOperation{}, err
 	}
-	op, err := s.eds.Start(ctx, payload, label)
+	provider, err := s.eds.Start(ctx, payload, label)
 	if err != nil {
 		return SigningOperation{}, err
 	}
-	x := &operationState{viewer: u, batch: a.Batch, assignmentID: a.ID, expectedIIN: expectedIIN, op: op, instructor: instructor}
-	s.ops.Store(op.ID, x)
-	return signingView(x), nil
+	op := domain.SigningOperationRecord{
+		ID: provider.ID, OrgID: u.OrgID, ViewerID: u.ID, ViewerRole: u.Role, ViewerDepartmentID: u.DepartmentID,
+		AssignmentID: a.ID, Batch: a.Batch, ExpectedIIN: expectedIIN, Instructor: instructor,
+		QRCode: provider.QRCode, LaunchLink: provider.LaunchLink, DataURL: provider.DataURL, SignURL: provider.SignURL,
+		ExpiresAt: provider.ExpiresAt, Stage: domain.SigningPending,
+	}
+	if err := s.repo.CreateSigningOperation(ctx, op); err != nil {
+		return SigningOperation{}, err
+	}
+	return signingView(op), nil
 }
 
 func (s *Service) SigningStatus(ctx context.Context, u domain.User, operationID string) (SigningOperation, error) {
-	v, ok := s.ops.Load(operationID)
-	if !ok {
+	op, err := s.repo.SigningOperation(ctx, u.OrgID, operationID)
+	if err != nil {
+		return SigningOperation{}, err
+	}
+	if op.ViewerID != u.ID && !u.HasBackoffice() {
 		return SigningOperation{}, domain.ErrNotFound
 	}
-	x := v.(*operationState)
-	if x.viewer.OrgID != u.OrgID {
-		return SigningOperation{}, domain.ErrNotFound
+	if op.Stage == domain.SigningDone || op.Stage == domain.SigningFailed {
+		return signingView(op), nil
 	}
-	x.mu.Lock()
-	defer x.mu.Unlock()
-	if x.done || x.err != nil {
-		return signingView(x), nil
-	}
-	r, err := s.eds.Poll(ctx, operationID)
+	op, claimed, err := s.repo.ClaimSigningOperation(ctx, u.OrgID, operationID)
 	if err != nil {
-		x.err = err
-		return signingView(x), nil
+		return SigningOperation{}, err
 	}
-	if !r.Done {
-		return signingView(x), nil
+	if !claimed {
+		return signingView(op), nil
 	}
-	r.IIN = domain.NormalizeIIN(r.IIN)
-	if !domain.ValidIIN(r.IIN) {
-		x.err = domain.Invalid("SIGEX вернул некорректный ИИН подписанта")
-		return signingView(x), nil
+	if op.Stage == domain.SigningPending {
+		if time.Now().After(op.ExpiresAt) {
+			return s.failSigning(ctx, op, "Срок действия QR-кода истёк")
+		}
+		r, err := s.eds.Poll(ctx, EDSOperation{ID: op.ID, QRCode: op.QRCode, LaunchLink: op.LaunchLink,
+			DataURL: op.DataURL, SignURL: op.SignURL, ExpiresAt: op.ExpiresAt})
+		if err != nil {
+			_ = s.repo.ReleaseSigningOperation(ctx, op.OrgID, op.ID)
+			return SigningOperation{}, err
+		}
+		if !r.Done {
+			if err := s.repo.ReleaseSigningOperation(ctx, op.OrgID, op.ID); err != nil {
+				return SigningOperation{}, err
+			}
+			return signingView(op), nil
+		}
+		r.IIN = domain.NormalizeIIN(r.IIN)
+		if !domain.ValidIIN(r.IIN) {
+			return s.failSigning(ctx, op, "SIGEX вернул некорректный ИИН подписанта")
+		}
+		if r.IIN != op.ExpectedIIN {
+			return s.failSigning(ctx, op, "ИИН подписанта не совпадает с ожидаемым ИИН")
+		}
+		op.Stage, op.SignerIIN, op.SignerName, op.CMS = domain.SigningSigned, r.IIN, r.Name, r.CMS
+		if err := s.repo.SaveSigningOperation(ctx, op); err != nil {
+			return SigningOperation{}, err
+		}
+		return signingView(op), nil
 	}
-	if r.IIN != x.expectedIIN {
-		x.err = domain.Invalid("ИИН подписанта не совпадает с ожидаемым ИИН")
-		return signingView(x), nil
-	}
-	a, err := s.repo.ScopedAssignment(ctx, x.viewer, x.assignmentID)
+
+	viewer := domain.User{ID: op.ViewerID, OrgID: op.OrgID, Role: op.ViewerRole, DepartmentID: op.ViewerDepartmentID}
+	a, err := s.repo.ScopedAssignment(ctx, viewer, op.AssignmentID)
 	if err != nil {
-		x.err = err
-		return signingView(x), nil
+		_ = s.repo.ReleaseSigningOperation(ctx, op.OrgID, op.ID)
+		return SigningOperation{}, err
 	}
-	payload, err := s.files.Read(u.OrgID, a.RecordPDFPath)
-	if err != nil {
-		x.err = err
-		return signingView(x), nil
+	if op.Stage == domain.SigningSigned {
+		payload, err := s.files.Read(op.OrgID, a.RecordPDFPath)
+		if err != nil {
+			_ = s.repo.ReleaseSigningOperation(ctx, op.OrgID, op.ID)
+			return SigningOperation{}, err
+		}
+		docID, signID, err := s.eds.Register(ctx, a.SIGEXID, payload, op.CMS)
+		if err != nil {
+			_ = s.repo.ReleaseSigningOperation(ctx, op.OrgID, op.ID)
+			return SigningOperation{}, err
+		}
+		op.Stage, op.SIGEXID, op.SIGEXSignID = domain.SigningRegistered, docID, &signID
+		if err := s.repo.SaveSigningOperation(ctx, op); err != nil {
+			return SigningOperation{}, err
+		}
+		return signingView(op), nil
 	}
-	docID, signID, err := s.eds.Register(ctx, a.SIGEXID, payload, r.CMS)
-	if err != nil {
-		x.err = err
-		return signingView(x), nil
+
+	if op.Stage == domain.SigningRegistered {
+		if op.SIGEXSignID == nil {
+			return s.failSigning(ctx, op, "SIGEX не вернул идентификатор подписи")
+		}
+		err = s.repo.ApplyAssignmentEDS(ctx, viewer, op.AssignmentID, op.Instructor, domain.EDSSignature{
+			IIN: op.SignerIIN, Name: op.SignerName, CMS: op.CMS, SIGEXID: op.SIGEXID, SignID: *op.SIGEXSignID,
+		})
+		if err != nil {
+			_ = s.repo.ReleaseSigningOperation(ctx, op.OrgID, op.ID)
+			return SigningOperation{}, err
+		}
+		op.Stage = domain.SigningDone
+		if err := s.repo.SaveSigningOperation(ctx, op); err != nil {
+			return SigningOperation{}, err
+		}
+		return signingView(op), nil
 	}
-	err = s.repo.ApplyAssignmentEDS(ctx, x.viewer, x.assignmentID, x.instructor, domain.EDSSignature{
-		IIN: r.IIN, Name: r.Name, CMS: r.CMS, SIGEXID: docID, SignID: signID,
-	})
-	if err != nil {
-		x.err = err
-		return signingView(x), nil
-	}
-	x.done, x.signedBy = true, r.Name
-	return signingView(x), nil
+
+	return s.failSigning(ctx, op, "Неизвестное состояние операции подписания")
 }
 
-func signingView(x *operationState) SigningOperation {
-	v := SigningOperation{ID: x.op.ID, Batch: x.batch, AssignmentID: x.assignmentID, QRCode: x.op.QRCode, LaunchLink: x.op.LaunchLink,
-		Done: x.done, Instructor: x.instructor, SignedBy: x.signedBy, state: x}
-	if x.err != nil {
-		v.Error = x.err.Error()
+func (s *Service) failSigning(ctx context.Context, op domain.SigningOperationRecord, message string) (SigningOperation, error) {
+	op.Stage, op.Error = domain.SigningFailed, message
+	if err := s.repo.SaveSigningOperation(ctx, op); err != nil {
+		return SigningOperation{}, err
 	}
-	return v
+	return signingView(op), nil
+}
+
+func signingView(op domain.SigningOperationRecord) SigningOperation {
+	return SigningOperation{ID: op.ID, Batch: op.Batch, AssignmentID: op.AssignmentID, QRCode: op.QRCode,
+		LaunchLink: op.LaunchLink, Done: op.Stage == domain.SigningDone, Instructor: op.Instructor,
+		Error: op.Error, SignedBy: op.SignerName}
 }
 
 func (s *Service) CompleteFake(operationID, iin, name string) error {

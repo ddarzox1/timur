@@ -9,7 +9,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	"qauipsiz/internal/domain"
@@ -35,6 +34,11 @@ type Repo interface {
 	SaveKnowledgeRecord(ctx context.Context, viewer domain.User, id int64, result, pdfPath, sha256 string) error
 	SnapshotBatchMaterial(ctx context.Context, viewer domain.User, batch, body, filePath, sha256 string) error
 	ApplyAssignmentEDS(ctx context.Context, viewer domain.User, id int64, instructor bool, sig domain.EDSSignature) error
+	CreateSigningOperation(ctx context.Context, op domain.SigningOperationRecord) error
+	SigningOperation(ctx context.Context, orgID int64, id string) (domain.SigningOperationRecord, error)
+	ClaimSigningOperation(ctx context.Context, orgID int64, id string) (domain.SigningOperationRecord, bool, error)
+	SaveSigningOperation(ctx context.Context, op domain.SigningOperationRecord) error
+	ReleaseSigningOperation(ctx context.Context, orgID int64, id string) error
 	Journal(ctx context.Context, viewer domain.User, kinds []string, f domain.JournalFilter) ([]domain.Assignment, error)
 	UserAssignments(ctx context.Context, userID int64, signed bool) ([]domain.Assignment, error)
 	KioskState(ctx context.Context, viewer domain.User, batch string) (domain.KioskState, error)
@@ -61,8 +65,8 @@ type ProtocolBuilder interface {
 }
 
 type EDSOperation struct {
-	ID, QRCode, LaunchLink string
-	ExpiresAt              time.Time
+	ID, QRCode, LaunchLink, DataURL, SignURL string
+	ExpiresAt                                time.Time
 }
 
 type EDSResult struct {
@@ -72,7 +76,7 @@ type EDSResult struct {
 
 type EDS interface {
 	Start(context.Context, []byte, string) (EDSOperation, error)
-	Poll(context.Context, string) (EDSResult, error)
+	Poll(context.Context, EDSOperation) (EDSResult, error)
 	Register(context.Context, string, []byte, string) (string, int64, error)
 	BuildDDC(context.Context, string, []byte) ([]byte, error)
 	Complete(string, string, string) error
@@ -89,7 +93,6 @@ type Service struct {
 	sms      SMSSender
 	protocol ProtocolBuilder
 	eds      EDS
-	ops      sync.Map // ponytail: при нескольких инстансах перенести операции подписания в БД.
 	baseURL  string
 }
 

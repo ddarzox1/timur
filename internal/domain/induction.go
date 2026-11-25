@@ -166,6 +166,42 @@ type EDSSignature struct {
 	SignID         int64
 }
 
+const (
+	SigningPending    = "pending"
+	SigningSigned     = "signed"
+	SigningRegistered = "registered"
+	SigningDone       = "done"
+	SigningFailed     = "failed"
+)
+
+// SigningOperationRecord — возобновляемое состояние одной QR-операции ЭЦП.
+type SigningOperationRecord struct {
+	ID                 string     `db:"id"`
+	OrgID              int64      `db:"org_id"`
+	ViewerID           int64      `db:"viewer_id"`
+	ViewerRole         string     `db:"viewer_role"`
+	ViewerDepartmentID *int64     `db:"viewer_department_id"`
+	AssignmentID       int64      `db:"assignment_id"`
+	Batch              string     `db:"batch"`
+	ExpectedIIN        string     `db:"expected_iin"`
+	Instructor         bool       `db:"instructor"`
+	QRCode             string     `db:"qr_code"`
+	LaunchLink         string     `db:"launch_link"`
+	DataURL            string     `db:"data_url"`
+	SignURL            string     `db:"sign_url"`
+	ExpiresAt          time.Time  `db:"expires_at"`
+	Stage              string     `db:"stage"`
+	SignerIIN          string     `db:"signer_iin"`
+	SignerName         string     `db:"signer_name"`
+	CMS                string     `db:"cms"`
+	SIGEXID            string     `db:"sigex_id"`
+	SIGEXSignID        *int64     `db:"sigex_sign_id"`
+	Error              string     `db:"error"`
+	LeaseUntil         *time.Time `db:"lease_until"`
+	CreatedAt          time.Time  `db:"created_at"`
+	UpdatedAt          time.Time  `db:"updated_at"`
+}
+
 type KioskState struct {
 	Doc               InductionDoc
 	Total, Signed     int

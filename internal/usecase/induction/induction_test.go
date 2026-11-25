@@ -32,6 +32,7 @@ type memRepo struct {
 	edsSigns                                []domain.EDSSignature
 	admitBy                                 string
 	materialBody, materialFile, materialSHA string
+	signOps                                 map[string]domain.SigningOperationRecord
 }
 
 func (m *memRepo) AdmitAssignment(_ context.Context, _ domain.User, _ int64, _ domain.AdmitInput, by string) error {
@@ -153,6 +154,44 @@ func (m *memRepo) ApplyAssignmentEDS(_ context.Context, _ domain.User, id int64,
 	m.assigns[id] = a
 	return nil
 }
+func (m *memRepo) CreateSigningOperation(_ context.Context, op domain.SigningOperationRecord) error {
+	m.signOps[op.ID] = op
+	return nil
+}
+func (m *memRepo) SigningOperation(_ context.Context, orgID int64, id string) (domain.SigningOperationRecord, error) {
+	op, ok := m.signOps[id]
+	if !ok || op.OrgID != orgID {
+		return domain.SigningOperationRecord{}, domain.ErrNotFound
+	}
+	return op, nil
+}
+func (m *memRepo) ClaimSigningOperation(_ context.Context, orgID int64, id string) (domain.SigningOperationRecord, bool, error) {
+	op, err := m.SigningOperation(ctx, orgID, id)
+	if err != nil {
+		return op, false, err
+	}
+	if op.LeaseUntil != nil && op.LeaseUntil.After(time.Now()) {
+		return op, false, nil
+	}
+	lease := time.Now().Add(30 * time.Second)
+	op.LeaseUntil = &lease
+	m.signOps[id] = op
+	return op, true, nil
+}
+func (m *memRepo) SaveSigningOperation(_ context.Context, op domain.SigningOperationRecord) error {
+	op.LeaseUntil = nil
+	m.signOps[op.ID] = op
+	return nil
+}
+func (m *memRepo) ReleaseSigningOperation(_ context.Context, orgID int64, id string) error {
+	op, err := m.SigningOperation(ctx, orgID, id)
+	if err != nil {
+		return err
+	}
+	op.LeaseUntil = nil
+	m.signOps[id] = op
+	return nil
+}
 
 type dir struct{}
 
@@ -190,9 +229,9 @@ func (protocol) Build(domain.ProtocolInput) ([]byte, string, error) {
 type eds struct{ result EDSResult }
 
 func (*eds) Start(context.Context, []byte, string) (EDSOperation, error) {
-	return EDSOperation{ID: "op"}, nil
+	return EDSOperation{ID: "op", ExpiresAt: time.Now().Add(10 * time.Minute)}, nil
 }
-func (e *eds) Poll(context.Context, string) (EDSResult, error) { return e.result, nil }
+func (e *eds) Poll(context.Context, EDSOperation) (EDSResult, error) { return e.result, nil }
 func (*eds) Register(context.Context, string, []byte, string) (string, int64, error) {
 	return "doc", 1, nil
 }
@@ -236,6 +275,7 @@ func setup() (*Service, *memRepo, *sms) {
 		},
 		kiosk:       domain.KioskState{Doc: domain.InductionDoc{OrgID: 1, Batch: "b", PDFPath: "/files/1/p.pdf"}, Total: 1},
 		expectedIIN: "900101300017",
+		signOps:     map[string]domain.SigningOperationRecord{},
 	}
 	s := &sms{}
 	return New(repo, dir{}, files{}, s, protocol{}, &eds{}, "https://q.kz/"), repo, s
@@ -356,9 +396,37 @@ func TestEDSOperation(t *testing.T) {
 	if err := s.CompleteFake(op.ID, "900101300017", "Иван Иванов"); err != nil {
 		t.Fatal(err)
 	}
-	status, err := s.SigningStatus(ctx, hse, op.ID)
+	// Новый экземпляр сервиса имитирует рестарт приложения: состояние операции берётся из репозитория.
+	s = New(repo, dir{}, files{}, &sms{}, protocol{}, s.eds, "https://q.kz/")
+	var status SigningOperation
+	for range 3 {
+		status, err = s.SigningStatus(ctx, hse, op.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
 	if err != nil || !status.Done || len(repo.edsSigns) != 1 || repo.edsSigns[0].SIGEXID != "doc" {
 		t.Fatalf("status=%+v signs=%+v err=%v", status, repo.edsSigns, err)
+	}
+}
+
+func TestSigningOperationFailurePersists(t *testing.T) {
+	s, repo, _ := setup()
+	op, err := s.StartKiosk(ctx, hse, "b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.CompleteFake(op.ID, "900101300099", "Чужой"); err != nil {
+		t.Fatal(err)
+	}
+	status, err := s.SigningStatus(ctx, hse, op.ID)
+	if err != nil || status.Error == "" {
+		t.Fatalf("чужой ИИН должен завершить операцию ошибкой: status=%+v err=%v", status, err)
+	}
+	s = New(repo, dir{}, files{}, &sms{}, protocol{}, s.eds, "https://q.kz/")
+	status, err = s.SigningStatus(ctx, hse, op.ID)
+	if err != nil || status.Error == "" || repo.signOps[op.ID].Stage != domain.SigningFailed {
+		t.Fatalf("ошибка потерялась после рестарта: status=%+v stored=%+v err=%v", status, repo.signOps[op.ID], err)
 	}
 }
 

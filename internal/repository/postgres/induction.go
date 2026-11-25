@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -31,6 +32,11 @@ const assignmentSelect = `SELECT a.id, a.template_id, a.user_id, a.batch, a.reas
 	LEFT JOIN locations al ON al.id = a.location_id
 	LEFT JOIN induction_records er ON er.assignment_id = a.id
 	LEFT JOIN induction_docs ed ON ed.org_id = a.org_id AND ed.batch = a.batch`
+
+const signingOperationSelect = `SELECT id, org_id, viewer_id, viewer_role, viewer_department_id, assignment_id, batch,
+	expected_iin, instructor, qr_code, launch_link, data_url, sign_url, expires_at, stage,
+	signer_iin, signer_name, cms, sigex_id, sigex_sign_id, error, lease_until, created_at, updated_at
+	FROM signing_operations`
 
 func (s *Store) InductionTemplates(ctx context.Context, orgID int64) ([]domain.InductionTemplate, error) {
 	return list[domain.InductionTemplate](ctx, s.db, `SELECT t.id, t.title, t.title_kk, t.kind, t.repeat_months, t.instructor_id,
@@ -321,18 +327,68 @@ func (s *Store) SnapshotBatchMaterial(ctx context.Context, viewer domain.User, b
 	return nil
 }
 
+func (s *Store) CreateSigningOperation(ctx context.Context, op domain.SigningOperationRecord) error {
+	_, err := s.db.Exec(ctx, `INSERT INTO signing_operations
+		(id, org_id, viewer_id, viewer_role, viewer_department_id, assignment_id, batch, expected_iin, instructor,
+		 qr_code, launch_link, data_url, sign_url, expires_at, stage)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+		op.ID, op.OrgID, op.ViewerID, op.ViewerRole, op.ViewerDepartmentID, op.AssignmentID, op.Batch, op.ExpectedIIN,
+		op.Instructor, op.QRCode, op.LaunchLink, op.DataURL, op.SignURL, op.ExpiresAt, op.Stage)
+	return err
+}
+
+func (s *Store) SigningOperation(ctx context.Context, orgID int64, id string) (domain.SigningOperationRecord, error) {
+	return one[domain.SigningOperationRecord](ctx, s.db, signingOperationSelect+` WHERE org_id=$1 AND id=$2`, orgID, id)
+}
+
+func (s *Store) ClaimSigningOperation(ctx context.Context, orgID int64, id string) (domain.SigningOperationRecord, bool, error) {
+	op, err := one[domain.SigningOperationRecord](ctx, s.db, `UPDATE signing_operations
+		SET lease_until=now()+interval '3 minutes', updated_at=now()
+		WHERE org_id=$1 AND id=$2 AND stage NOT IN ('done','failed') AND (lease_until IS NULL OR lease_until < now())
+		RETURNING id, org_id, viewer_id, viewer_role, viewer_department_id, assignment_id, batch,
+		expected_iin, instructor, qr_code, launch_link, data_url, sign_url, expires_at, stage,
+		signer_iin, signer_name, cms, sigex_id, sigex_sign_id, error, lease_until, created_at, updated_at`, orgID, id)
+	if err == nil {
+		return op, true, nil
+	}
+	if !errors.Is(err, domain.ErrNotFound) {
+		return domain.SigningOperationRecord{}, false, err
+	}
+	op, err = s.SigningOperation(ctx, orgID, id)
+	return op, false, err
+}
+
+func (s *Store) SaveSigningOperation(ctx context.Context, op domain.SigningOperationRecord) error {
+	tag, err := s.db.Exec(ctx, `UPDATE signing_operations SET stage=$3, signer_iin=$4, signer_name=$5, cms=$6,
+		sigex_id=$7, sigex_sign_id=$8, error=$9, lease_until=NULL, updated_at=now() WHERE org_id=$1 AND id=$2`,
+		op.OrgID, op.ID, op.Stage, op.SignerIIN, op.SignerName, op.CMS, op.SIGEXID, op.SIGEXSignID, op.Error)
+	if err == nil && tag.RowsAffected() == 0 {
+		return domain.ErrNotFound
+	}
+	return err
+}
+
+func (s *Store) ReleaseSigningOperation(ctx context.Context, orgID int64, id string) error {
+	tag, err := s.db.Exec(ctx, `UPDATE signing_operations SET lease_until=NULL, updated_at=now() WHERE org_id=$1 AND id=$2`, orgID, id)
+	if err == nil && tag.RowsAffected() == 0 {
+		return domain.ErrNotFound
+	}
+	return err
+}
+
 func (s *Store) ApplyAssignmentEDS(ctx context.Context, viewer domain.User, id int64, instructor bool, sig domain.EDSSignature) error {
 	if _, err := s.ScopedAssignment(ctx, viewer, id); err != nil {
 		return err
 	}
 	return pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
 		var workerIIN, instructorIIN, result string
-		var signedAt *time.Time
-		var instructorSignedAt *time.Time
-		err := tx.QueryRow(ctx, `SELECT coalesce(u.iin,''), coalesce(i.iin,''), a.knowledge_result, a.signed_at, r.instructor_signed_at
+		var signedAt, instructorSignedAt *time.Time
+		var workerSignID, instructorSignID *int64
+		err := tx.QueryRow(ctx, `SELECT coalesce(u.iin,''), coalesce(i.iin,''), a.knowledge_result, a.signed_at,
+			r.instructor_signed_at, a.sigex_sign_id, r.instructor_sign_id
 			FROM induction_assignments a JOIN users u ON u.id=a.user_id LEFT JOIN users i ON i.id=a.instructor_id
 			JOIN induction_records r ON r.assignment_id=a.id WHERE a.id=$1 AND a.org_id=$2 FOR UPDATE OF a, r`, id, viewer.OrgID).
-			Scan(&workerIIN, &instructorIIN, &result, &signedAt, &instructorSignedAt)
+			Scan(&workerIIN, &instructorIIN, &result, &signedAt, &instructorSignedAt, &workerSignID, &instructorSignID)
 		if err != nil {
 			return notFound(err)
 		}
@@ -341,6 +397,9 @@ func (s *Store) ApplyAssignmentEDS(ctx context.Context, viewer domain.User, id i
 		}
 		if !instructor {
 			if signedAt != nil {
+				if workerSignID != nil && *workerSignID == sig.SignID {
+					return nil
+				}
 				return domain.Invalid("Работник уже подписал запись")
 			}
 			if workerIIN != sig.IIN {
@@ -353,6 +412,9 @@ func (s *Store) ApplyAssignmentEDS(ctx context.Context, viewer domain.User, id i
 				return domain.Invalid("Сначала запись подписывает работник")
 			}
 			if instructorSignedAt != nil {
+				if instructorSignID != nil && *instructorSignID == sig.SignID {
+					return nil
+				}
 				return domain.Invalid("Инструктирующий уже подписал запись")
 			}
 			if instructorIIN != sig.IIN {

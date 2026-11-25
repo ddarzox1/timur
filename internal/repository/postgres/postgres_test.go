@@ -396,6 +396,50 @@ func TestAssignmentRecordEDSOrder(t *testing.T) {
 	}
 }
 
+func TestSigningOperationPersistenceAndLease(t *testing.T) {
+	s, db := testStore(t)
+	f := newFixture(t, db)
+	worker, instructor := f.user(domain.RoleWorker), f.user(domain.RoleInstructor)
+	must(t, s.SaveInductionTemplate(ctx, f.org, domain.InductionTemplate{Title: "Операция ЭЦП", Kind: "intro"}))
+	templates, _ := s.InductionTemplates(ctx, f.org)
+	batch := fmt.Sprintf("op-%d", f.org)
+	viewer := domain.User{ID: instructor, OrgID: f.org, Role: domain.RoleHSE}
+	_, err := s.CreateAssignments(ctx, viewer, templates[0].ID, &instructor, nil, batch, "", "", "", "", time.Now(),
+		[]int64{worker}, testInductionDoc(f.org, batch))
+	must(t, err)
+	rows, err := s.BatchAssignments(ctx, viewer, batch)
+	must(t, err)
+	op := domain.SigningOperationRecord{ID: fmt.Sprintf("operation-%d", f.org), OrgID: f.org, ViewerID: instructor,
+		ViewerRole: domain.RoleHSE, AssignmentID: rows[0].ID, Batch: batch, ExpectedIIN: "900101300017",
+		ExpiresAt: time.Now().Add(10 * time.Minute), Stage: domain.SigningPending, SignURL: "https://sigex.example/sign"}
+	must(t, s.CreateSigningOperation(ctx, op))
+
+	claimed, ok, err := s.ClaimSigningOperation(ctx, f.org, op.ID)
+	must(t, err)
+	if !ok || claimed.LeaseUntil == nil || claimed.SignURL != op.SignURL {
+		t.Fatalf("операция не захвачена: %+v, claimed=%v", claimed, ok)
+	}
+	if _, ok, err := s.ClaimSigningOperation(ctx, f.org, op.ID); err != nil || ok {
+		t.Fatalf("параллельный claim должен быть отклонён: claimed=%v err=%v", ok, err)
+	}
+	must(t, s.ReleaseSigningOperation(ctx, f.org, op.ID))
+	claimed, ok, err = s.ClaimSigningOperation(ctx, f.org, op.ID)
+	must(t, err)
+	if !ok {
+		t.Fatal("после release операция должна снова захватываться")
+	}
+	claimed.Stage, claimed.CMS, claimed.SignerIIN = domain.SigningSigned, "cms", "900101300017"
+	must(t, s.SaveSigningOperation(ctx, claimed))
+	stored, err := s.SigningOperation(ctx, f.org, op.ID)
+	must(t, err)
+	if stored.Stage != domain.SigningSigned || stored.CMS != "cms" || stored.LeaseUntil != nil {
+		t.Fatalf("стадия операции не сохранена: %+v", stored)
+	}
+	if _, err := s.SigningOperation(ctx, f.org+1, op.ID); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("операция утекла в другую организацию: %v", err)
+	}
+}
+
 func TestUnsignedInBatchIsolation(t *testing.T) {
 	s, db := testStore(t)
 	a, b := newFixture(t, db), newFixture(t, db)

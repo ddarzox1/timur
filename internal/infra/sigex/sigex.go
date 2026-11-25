@@ -32,10 +32,10 @@ func (f *Fake) Start(_ context.Context, _ []byte, _ string) (induction.EDSOperat
 	return induction.EDSOperation{ID: id, ExpiresAt: time.Now().Add(10 * time.Minute)}, nil
 }
 
-func (f *Fake) Poll(_ context.Context, id string) (induction.EDSResult, error) {
+func (f *Fake) Poll(_ context.Context, op induction.EDSOperation) (induction.EDSResult, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	r, ok := f.ops[id]
+	r, ok := f.ops[op.ID]
 	if !ok {
 		return r, fmt.Errorf("SIGEX fake: операция не найдена")
 	}
