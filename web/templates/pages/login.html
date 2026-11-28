@@ -4,7 +4,7 @@
 <div class="auth-box">
   <div class="row between" style="margin-bottom:1.5rem">
     <a href="/" class="logo" style="padding:0"><span class="logo-mark">{{template "i" "shield"}}</span><span class="logo-t">Qauipsiz</span></a>
-    {{template "langswitch" .}}
+    <span class="row">{{template "themeToggle" .}}{{template "langswitch" .}}</span>
   </div>
   <form method="post" action="/login">
     <h1>{{t "Вход"}}</h1>

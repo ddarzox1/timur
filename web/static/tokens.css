@@ -57,9 +57,10 @@
   --safe-b: env(safe-area-inset-bottom, 0px);
 }
 
-/* Wayfind · colourway night, по системной теме, без переключателя */
+/* Wayfind · colourway night. Медиавыражение остаётся запасным вариантом без JS;
+   data-theme задаётся переключателем до загрузки CSS и имеет приоритет. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme]) {
     --color-paper: oklch(15% 0.012 262); --color-paper-2: oklch(19% 0.013 262); --color-paper-3: oklch(12% 0.011 262);
     --color-ink: oklch(96% 0.005 250); --color-ink-2: oklch(83% 0.008 252); --color-muted: oklch(68% 0.012 256);
     --color-rule: oklch(31% 0.014 262); --color-ink-rule: oklch(44% 0.016 262);
@@ -72,4 +73,18 @@
     --color-shade: oklch(2% 0.01 260 / 0.7);
     --color-slab: oklch(10% 0.011 262); --color-slab-ink: oklch(96% 0.005 250); --color-slab-2: oklch(22% 0.013 262); --color-slab-muted: oklch(68% 0.012 256);
   }
+}
+
+:root[data-theme="dark"] {
+  --color-paper: oklch(15% 0.012 262); --color-paper-2: oklch(19% 0.013 262); --color-paper-3: oklch(12% 0.011 262);
+  --color-ink: oklch(96% 0.005 250); --color-ink-2: oklch(83% 0.008 252); --color-muted: oklch(68% 0.012 256);
+  --color-rule: oklch(31% 0.014 262); --color-ink-rule: oklch(44% 0.016 262);
+  --color-accent: oklch(62% 0.2 264); --color-accent-2: oklch(84% 0.15 82); --color-accent-ink: oklch(12% 0.011 262); --color-focus: oklch(72% 0.16 264);
+  --shadow-card: 0 24px 40px -24px oklch(2% 0.01 260 / 0.8);
+  --color-danger: oklch(70% 0.17 27); --color-danger-wash: oklch(27% 0.08 27); --color-danger-ink: oklch(12% 0.011 262);
+  --color-warn: oklch(79% 0.14 75); --color-warn-wash: oklch(28% 0.07 75); --color-warn-ink: oklch(12% 0.011 262);
+  --color-ok: oklch(72% 0.14 155); --color-ok-wash: oklch(25% 0.06 155); --color-ok-ink: oklch(12% 0.011 262);
+  --color-live-wash: oklch(27% 0.08 264); --color-accent-text: oklch(76% 0.15 264);
+  --color-shade: oklch(2% 0.01 260 / 0.7);
+  --color-slab: oklch(10% 0.011 262); --color-slab-ink: oklch(96% 0.005 250); --color-slab-2: oklch(22% 0.013 262); --color-slab-muted: oklch(68% 0.012 256);
 }

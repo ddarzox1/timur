@@ -3,10 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#0B0E14">
+<meta name="theme-color" content="#F3F4F6">
 <meta name="description" content="{{template "description" .}}">
 <link rel="manifest" href="/static/manifest.json">
 <link rel="icon" href="/static/icon.svg">
+<script src="/static/theme.js"></script>
 <link rel="stylesheet" href="/static/app.css">
 <script src="/static/htmx.min.js" defer></script>
 <script src="/static/phone-mask.js" defer></script>
@@ -16,6 +17,12 @@
 {{define "description"}}Qauipsiz: инструктажи с подписью сотрудника, журналы по формам РК и учёт опасностей на объектах.{{end}}
 
 {{define "langswitch"}}<span class="small"><a href="/lang/ru" {{if ne .Lang "kk"}}style="font-weight:700"{{end}}>RU</a> / <a href="/lang/kk" {{if eq .Lang "kk"}}style="font-weight:700"{{end}}>ҚАЗ</a></span>{{end}}
+
+{{define "themeToggle"}}<button class="theme-toggle" type="button" data-theme-toggle aria-label="{{if eq .Lang "kk"}}Тақырыпты ауыстыру{{else}}Сменить тему{{end}}">
+  <span class="theme-icon theme-icon-to-dark" aria-hidden="true">{{template "i" "moon"}}</span>
+  <span class="theme-icon theme-icon-to-light" aria-hidden="true">{{template "i" "sun"}}</span>
+  <span class="theme-text" data-theme-label>{{if eq .Lang "kk"}}Тақырып{{else}}Тема{{end}}</span>
+</button>{{end}}
 
 {{/* Админка: левое меню + шапка */}}
 {{define "admin"}}{{template "head" .}}<title>{{template "title" .}} — Qauipsiz</title></head>
@@ -41,6 +48,7 @@
       <label for="nav" class="burger" aria-label="Меню" role="button" tabindex="0">{{template "i" "menu"}}</label>
       <span class="muted small grow hide-sm">{{.Me.OrgName}}</span>
       <a class="logo-t show-sm grow" href="/admin">Qauipsiz</a>
+      {{template "themeToggle" .}}
       {{template "langswitch" .}}
       <span class="hide-sm"><b>{{.Me.Name}}</b> <span class="muted small">· {{t (role .Me.Role)}}</span></span>
       <form method="post" action="/logout"><button class="btn">{{template "i" "logout"}}<span class="hide-sm">{{t "Выйти"}}</span></button></form>
@@ -58,6 +66,7 @@
 <nav class="tabbar">
   <a href="/m" {{if eq .Path "/m"}}class="on"{{end}}><span class="ic">{{template "i" "home"}}</span>{{t "Главная"}}</a>
   <a href="/m/profile" {{if eq .Path "/m/profile"}}class="on"{{end}}><span class="ic">{{template "i" "user"}}</span>{{t "Профиль"}}</a>
+  {{template "themeToggle" .}}
 </nav>
 </body></html>{{end}}
 

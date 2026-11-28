@@ -6,6 +6,7 @@
   <nav class="pnav">
     <a class="logo" href="/"><span class="logo-mark">{{template "i" "shield"}}</span><span class="logo-t">Qauipsiz</span></a>
     <div class="row">
+      {{template "themeToggle" .}}
       {{template "langswitch" .}}
       {{if .Me}}<a class="btn primary" href="{{if eq .Me.Role "worker"}}/m{{else}}/admin{{end}}">Открыть</a>{{else}}<a class="btn" href="/login">Войти</a>{{end}}
     </div>
@@ -19,8 +20,8 @@
       <a class="btn big" href="/login">Войти</a>
     </div>
     <figure class="shot shot-wide">
-      <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="/static/img/admin-hazards-dark.png">
+      <picture data-theme-picture>
+        <source data-theme-source-dark media="(prefers-color-scheme: dark)" srcset="/static/img/admin-hazards-dark.png">
         <img src="/static/img/admin-hazards.png" alt="Реестр опасностей: риск, объект, ответственный, срок и статус каждой записи" width="1440" height="900">
       </picture>
       <figcaption>Реестр опасностей: риск, срок и статус у каждой записи</figcaption>
@@ -42,8 +43,8 @@
       <p class="muted">Вводный, первичный, повторный, внеплановый, целевой. Сотрудник читает и расписывается пальцем, с отметкой времени и геолокации. Напоминания о повторных.</p>
     </div>
     <figure class="shot phone">
-      <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="/static/img/m-induction-dark.png">
+      <picture data-theme-picture>
+        <source data-theme-source-dark media="(prefers-color-scheme: dark)" srcset="/static/img/m-induction-dark.png">
         <img src="/static/img/m-induction.png" alt="Экран сотрудника: инструктаж со статусом «Просрочено» и действием «Подписать» внизу экрана" width="390" height="844" loading="lazy">
       </picture>
       <figcaption>Экран сотрудника: статус инструктажа сверху, подпись внизу, в зоне большого пальца</figcaption>
