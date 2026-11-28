@@ -72,6 +72,14 @@ func (c Config) Validate() error {
 	default:
 		return errors.New("STORAGE: допустимо local или s3")
 	}
+	if !c.SIGEX.Fake {
+		if c.SIGEX.URL == "" {
+			return errors.New("SIGEX_FAKE=0: нужен SIGEX_URL")
+		}
+		if (c.SIGEX.Cert == "") != (c.SIGEX.Key == "") {
+			return errors.New("SIGEX_CERT и SIGEX_KEY должны быть заданы вместе")
+		}
+	}
 	return nil
 }
 

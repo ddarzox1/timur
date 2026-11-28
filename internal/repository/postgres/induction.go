@@ -18,6 +18,7 @@ const assignmentSelect = `SELECT a.id, a.template_id, a.user_id, a.batch, a.reas
 	a.worker_department_snapshot AS department, a.instructor_name_snapshot AS instructor,
 	a.instructor_position_snapshot AS instructor_pos, coalesce(i.iin, '') AS instructor_iin,
 	a.knowledge_result, coalesce(er.pdf_path, '') AS record_pdf_path, coalesce(er.sha256, '') AS record_sha256,
+	coalesce(er.ddc_path, '') AS record_ddc_path, coalesce(er.ddc_sha256, '') AS record_ddc_sha256,
 	coalesce(u.iin, '') AS user_iin, a.iin, a.signer_name, a.cms, a.sigex_sign_id,
 	coalesce(er.instructor_signed_at, ed.instructor_signed_at) AS instructor_signed_at,
 	coalesce(er.instructor_iin, ed.instructor_iin, '') AS instructor_signer_iin,
@@ -35,7 +36,8 @@ const assignmentSelect = `SELECT a.id, a.template_id, a.user_id, a.batch, a.reas
 
 const signingOperationSelect = `SELECT id, org_id, viewer_id, viewer_role, viewer_department_id, assignment_id, batch,
 	expected_iin, instructor, qr_code, launch_link, data_url, sign_url, expires_at, stage,
-	signer_iin, signer_name, cms, sigex_id, sigex_sign_id, error, lease_until, created_at, updated_at
+	signer_iin, signer_name, cms, enriched_cms, evidence, ddc_path, ddc_sha256,
+	sigex_id, sigex_sign_id, error, lease_until, created_at, updated_at
 	FROM signing_operations`
 
 func (s *Store) InductionTemplates(ctx context.Context, orgID int64) ([]domain.InductionTemplate, error) {
@@ -347,7 +349,8 @@ func (s *Store) ClaimSigningOperation(ctx context.Context, orgID int64, id strin
 		WHERE org_id=$1 AND id=$2 AND stage NOT IN ('done','failed') AND (lease_until IS NULL OR lease_until < now())
 		RETURNING id, org_id, viewer_id, viewer_role, viewer_department_id, assignment_id, batch,
 		expected_iin, instructor, qr_code, launch_link, data_url, sign_url, expires_at, stage,
-		signer_iin, signer_name, cms, sigex_id, sigex_sign_id, error, lease_until, created_at, updated_at`, orgID, id)
+		signer_iin, signer_name, cms, enriched_cms, evidence, ddc_path, ddc_sha256,
+		sigex_id, sigex_sign_id, error, lease_until, created_at, updated_at`, orgID, id)
 	if err == nil {
 		return op, true, nil
 	}
@@ -359,9 +362,15 @@ func (s *Store) ClaimSigningOperation(ctx context.Context, orgID int64, id strin
 }
 
 func (s *Store) SaveSigningOperation(ctx context.Context, op domain.SigningOperationRecord) error {
+	evidence := string(op.EvidenceJSON)
+	if evidence == "" {
+		evidence = "{}"
+	}
 	tag, err := s.db.Exec(ctx, `UPDATE signing_operations SET stage=$3, signer_iin=$4, signer_name=$5, cms=$6,
-		sigex_id=$7, sigex_sign_id=$8, error=$9, lease_until=NULL, updated_at=now() WHERE org_id=$1 AND id=$2`,
-		op.OrgID, op.ID, op.Stage, op.SignerIIN, op.SignerName, op.CMS, op.SIGEXID, op.SIGEXSignID, op.Error)
+		enriched_cms=$7, evidence=$8::jsonb, ddc_path=$9, ddc_sha256=$10,
+		sigex_id=$11, sigex_sign_id=$12, error=$13, lease_until=NULL, updated_at=now()
+		WHERE org_id=$1 AND id=$2`, op.OrgID, op.ID, op.Stage, op.SignerIIN, op.SignerName, op.CMS,
+		op.EnrichedCMS, evidence, op.DDCPath, op.DDCSHA256, op.SIGEXID, op.SIGEXSignID, op.Error)
 	if err == nil && tag.RowsAffected() == 0 {
 		return domain.ErrNotFound
 	}
@@ -395,6 +404,40 @@ func (s *Store) ApplyAssignmentEDS(ctx context.Context, viewer domain.User, id i
 		if result == "" {
 			return domain.Invalid("Сначала зафиксируйте результат проверки знаний")
 		}
+		role := "worker"
+		if instructor {
+			role = "instructor"
+		}
+		tsp, ocsp := string(sig.Evidence.TSP), string(sig.Evidence.OCSP)
+		policyIDs, keyUsages, extKeyUsages := sig.Evidence.PolicyIDs, sig.Evidence.KeyUsages, sig.Evidence.ExtKeyUsages
+		if policyIDs == nil {
+			policyIDs = []string{}
+		}
+		if keyUsages == nil {
+			keyUsages = []string{}
+		}
+		if extKeyUsages == nil {
+			extKeyUsages = []string{}
+		}
+		if tsp == "" {
+			tsp = "{}"
+		}
+		if ocsp == "" {
+			ocsp = "{}"
+		}
+		_, err = tx.Exec(ctx, `INSERT INTO induction_signatures
+			(assignment_id, org_id, signer_role, sigex_id, sign_id, iin, bin, name, subject, issuer, serial_number, certificate,
+			 certificate_from, certificate_until, stored_at, sign_algorithm, key_storage, policy_ids, key_usages,
+			 ext_key_usages, cms_original, cms_enriched, tsp, ocsp)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23::jsonb,$24::jsonb)
+			ON CONFLICT (assignment_id, signer_role) DO NOTHING`, id, viewer.OrgID, role, sig.SIGEXID, sig.SignID,
+			sig.IIN, sig.Evidence.BIN, sig.Name, sig.Evidence.Subject, sig.Evidence.Issuer, sig.Evidence.SerialNumber,
+			sig.Evidence.Certificate, sig.Evidence.CertificateFrom, sig.Evidence.CertificateUntil, sig.Evidence.StoredAt, sig.Evidence.SignAlgorithm,
+			sig.Evidence.KeyStorage, policyIDs, keyUsages, extKeyUsages,
+			sig.CMS, sig.EnrichedCMS, tsp, ocsp)
+		if err != nil {
+			return err
+		}
 		if !instructor {
 			if signedAt != nil {
 				if workerSignID != nil && *workerSignID == sig.SignID {
@@ -421,8 +464,9 @@ func (s *Store) ApplyAssignmentEDS(ctx context.Context, viewer domain.User, id i
 				return domain.Invalid("ИИН подписанта не совпадает с ИИН инструктирующего")
 			}
 			_, err = tx.Exec(ctx, `UPDATE induction_records SET instructor_signed_at=now(), instructor_iin=$3,
-				instructor_name=$4, instructor_cms=$5, instructor_sign_id=$6 WHERE assignment_id=$1 AND org_id=$2`,
-				id, viewer.OrgID, sig.IIN, sig.Name, sig.CMS, sig.SignID)
+				instructor_name=$4, instructor_cms=$5, instructor_sign_id=$6, ddc_path=$7, ddc_sha256=$8
+				WHERE assignment_id=$1 AND org_id=$2`, id, viewer.OrgID, sig.IIN, sig.Name, sig.CMS, sig.SignID,
+				sig.DDCPath, sig.DDCSHA256)
 		}
 		if err != nil {
 			return err

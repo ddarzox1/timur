@@ -370,8 +370,11 @@ func TestAssignmentRecordEDSOrder(t *testing.T) {
 	rows, err := s.BatchAssignments(ctx, viewer, batch)
 	must(t, err)
 	id := rows[0].ID
+	docID := fmt.Sprintf("doc-%d", f.org)
 
-	instructorSig := domain.EDSSignature{IIN: "900101300027", Name: "Инструктор", CMS: "cms-i", SIGEXID: "doc", SignID: 2}
+	instructorSig := domain.EDSSignature{IIN: "900101300027", Name: "Инструктор", CMS: "cms-i", EnrichedCMS: "cms-i-enriched",
+		SIGEXID: docID, SignID: 2, DDCPath: "/files/ddc.pdf", DDCSHA256: "ddc-sha",
+		Evidence: domain.SignatureEvidence{Certificate: "cert-i", TSP: []byte(`{"valid":true}`), OCSP: []byte(`{"status":"good"}`)}}
 	if err := s.ApplyAssignmentEDS(ctx, viewer, id, true, instructorSig); err == nil {
 		t.Fatal("нельзя подписать запись до фиксации результата")
 	}
@@ -382,17 +385,26 @@ func TestAssignmentRecordEDSOrder(t *testing.T) {
 	if err := s.ApplyAssignmentEDS(ctx, viewer, id, true, instructorSig); err == nil {
 		t.Fatal("инструктор не должен подписывать раньше работника")
 	}
-	wrong := domain.EDSSignature{IIN: "900101300099", Name: "Чужой", CMS: "cms-x", SIGEXID: "doc", SignID: 1}
+	wrong := domain.EDSSignature{IIN: "900101300099", Name: "Чужой", CMS: "cms-x", SIGEXID: docID, SignID: 1}
 	if err := s.ApplyAssignmentEDS(ctx, viewer, id, false, wrong); err == nil {
 		t.Fatal("чужой ИИН должен быть отклонён")
 	}
-	workerSig := domain.EDSSignature{IIN: "900101300017", Name: "Работник", CMS: "cms-w", SIGEXID: "doc", SignID: 1}
+	workerSig := domain.EDSSignature{IIN: "900101300017", Name: "Работник", CMS: "cms-w", EnrichedCMS: "cms-w-enriched",
+		SIGEXID: docID, SignID: 1, Evidence: domain.SignatureEvidence{Certificate: "cert-w", TSP: []byte(`{"valid":true}`), OCSP: []byte(`{"status":"good"}`)}}
 	must(t, s.ApplyAssignmentEDS(ctx, viewer, id, false, workerSig))
 	must(t, s.ApplyAssignmentEDS(ctx, viewer, id, true, instructorSig))
+	must(t, s.ApplyAssignmentEDS(ctx, viewer, id, false, workerSig))
 	a, err := s.ScopedAssignment(ctx, viewer, id)
 	must(t, err)
-	if a.KnowledgeResult != domain.KnowledgePassed || a.SignedAt == nil || a.InstructorSignedAt == nil || a.SIGEXID != "doc" {
+	if a.KnowledgeResult != domain.KnowledgePassed || a.SignedAt == nil || a.InstructorSignedAt == nil || a.SIGEXID != docID ||
+		a.RecordDDCPath != instructorSig.DDCPath || a.RecordDDCSHA256 != instructorSig.DDCSHA256 {
 		t.Fatalf("неполная подписанная запись: %+v", a)
+	}
+	var archived int
+	must(t, db.QueryRow(ctx, `SELECT count(*) FROM induction_signatures WHERE assignment_id=$1
+		AND cms_enriched <> '' AND certificate <> '' AND tsp->>'valid'='true' AND ocsp->>'status'='good'`, id).Scan(&archived))
+	if archived != 2 {
+		t.Fatalf("архив доказательств подписи неполон: %d", archived)
 	}
 }
 
@@ -429,10 +441,12 @@ func TestSigningOperationPersistenceAndLease(t *testing.T) {
 		t.Fatal("после release операция должна снова захватываться")
 	}
 	claimed.Stage, claimed.CMS, claimed.SignerIIN = domain.SigningSigned, "cms", "900101300017"
+	claimed.DDCPath, claimed.DDCSHA256 = "/files/ddc.pdf", "ddc-sha"
 	must(t, s.SaveSigningOperation(ctx, claimed))
 	stored, err := s.SigningOperation(ctx, f.org, op.ID)
 	must(t, err)
-	if stored.Stage != domain.SigningSigned || stored.CMS != "cms" || stored.LeaseUntil != nil {
+	if stored.Stage != domain.SigningSigned || stored.CMS != "cms" || stored.LeaseUntil != nil ||
+		stored.DDCPath != claimed.DDCPath || stored.DDCSHA256 != claimed.DDCSHA256 {
 		t.Fatalf("стадия операции не сохранена: %+v", stored)
 	}
 	if _, err := s.SigningOperation(ctx, f.org+1, op.ID); !errors.Is(err, domain.ErrNotFound) {

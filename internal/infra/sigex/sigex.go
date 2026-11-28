@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"qauipsiz/internal/domain"
 	"qauipsiz/internal/usecase/induction"
 )
 
@@ -32,7 +33,7 @@ func (f *Fake) Start(_ context.Context, _ []byte, _ string) (induction.EDSOperat
 	return induction.EDSOperation{ID: id, ExpiresAt: time.Now().Add(10 * time.Minute)}, nil
 }
 
-func (f *Fake) Poll(_ context.Context, op induction.EDSOperation) (induction.EDSResult, error) {
+func (f *Fake) Poll(_ context.Context, op induction.EDSOperation, _ []byte) (induction.EDSResult, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	r, ok := f.ops[op.ID]
@@ -52,18 +53,19 @@ func (f *Fake) Complete(id, iin, name string) error {
 	return nil
 }
 
-func (f *Fake) Register(_ context.Context, documentID string, _ []byte, cms string) (string, int64, error) {
+func (f *Fake) Register(_ context.Context, in induction.EDSRegisterInput) (induction.EDSRegistration, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if documentID == "" {
-		documentID = "fake-doc-" + fmt.Sprint(time.Now().UnixNano())
+	if in.DocumentID == "" {
+		in.DocumentID = "fake-doc-" + fmt.Sprint(time.Now().UnixNano())
 	}
 	id := f.next
 	f.next++
-	if cms == "" {
-		return "", 0, fmt.Errorf("SIGEX fake: пустая CMS")
+	if in.CMS == "" {
+		return induction.EDSRegistration{}, fmt.Errorf("SIGEX fake: пустая CMS")
 	}
-	return documentID, id, nil
+	return induction.EDSRegistration{DocumentID: in.DocumentID, SignID: id, EnrichedCMS: "FAKE-ENRICHED-" + in.CMS,
+		Evidence: domain.SignatureEvidence{IIN: in.CandidateIIN, Name: in.CandidateName, TSP: []byte("{}"), OCSP: []byte("{}")}}, nil
 }
 
 func (f *Fake) BuildDDC(_ context.Context, documentID string, pdf []byte) ([]byte, error) {

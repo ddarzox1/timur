@@ -146,6 +146,7 @@ func (m *memRepo) ApplyAssignmentEDS(_ context.Context, _ domain.User, id int64,
 	if instructor {
 		now := time.Now()
 		a.InstructorSignedAt = &now
+		a.RecordDDCPath, a.RecordDDCSHA256 = sig.DDCPath, sig.DDCSHA256
 	} else {
 		now := time.Now()
 		a.SignedAt = &now
@@ -226,16 +227,24 @@ func (protocol) Build(domain.ProtocolInput) ([]byte, string, error) {
 	return []byte("%PDF-test"), "sum", nil
 }
 
-type eds struct{ result EDSResult }
+type eds struct {
+	result        EDSResult
+	registeredIIN string
+}
 
 func (*eds) Start(context.Context, []byte, string) (EDSOperation, error) {
 	return EDSOperation{ID: "op", ExpiresAt: time.Now().Add(10 * time.Minute)}, nil
 }
-func (e *eds) Poll(context.Context, EDSOperation) (EDSResult, error) { return e.result, nil }
-func (*eds) Register(context.Context, string, []byte, string) (string, int64, error) {
-	return "doc", 1, nil
+func (e *eds) Poll(context.Context, EDSOperation, []byte) (EDSResult, error) { return e.result, nil }
+func (e *eds) Register(_ context.Context, in EDSRegisterInput) (EDSRegistration, error) {
+	iin := in.CandidateIIN
+	if e.registeredIIN != "" {
+		iin = e.registeredIIN
+	}
+	return EDSRegistration{DocumentID: "doc", SignID: 1, EnrichedCMS: "enriched",
+		Evidence: domain.SignatureEvidence{IIN: iin, Name: in.CandidateName, TSP: []byte("{}"), OCSP: []byte("{}")}}, nil
 }
-func (*eds) BuildDDC(context.Context, string, []byte) ([]byte, error) { return nil, nil }
+func (*eds) BuildDDC(_ context.Context, _ string, pdf []byte) ([]byte, error) { return pdf, nil }
 func (e *eds) Complete(_ string, iin, name string) error {
 	e.result = EDSResult{Done: true, IIN: iin, Name: name, CMS: "cms"}
 	return nil
@@ -266,7 +275,8 @@ func setup() (*Service, *memRepo, *sms) {
 		assigns: map[int64]domain.Assignment{
 			100: {ID: 100, TemplateID: 1, UserID: 10},
 			101: {ID: 101, TemplateID: 3, UserID: 10},
-			200: {ID: 200, TemplateID: 1, UserID: 999, Batch: "b", UserName: "Иван Иванов", UserIIN: "900101300017", KnowledgeResult: domain.KnowledgePassed, RecordPDFPath: "/files/1/record.pdf"},
+			200: {ID: 200, TemplateID: 1, UserID: 999, Batch: "b", UserName: "Иван Иванов", UserIIN: "900101300017",
+				InstructorIIN: "900101300027", KnowledgeResult: domain.KnowledgePassed, RecordPDFPath: "/files/1/record.pdf"},
 		},
 		signed: map[int64]domain.Signature{},
 		users: map[int64]domain.User{
@@ -408,6 +418,26 @@ func TestEDSOperation(t *testing.T) {
 	if err != nil || !status.Done || len(repo.edsSigns) != 1 || repo.edsSigns[0].SIGEXID != "doc" {
 		t.Fatalf("status=%+v signs=%+v err=%v", status, repo.edsSigns, err)
 	}
+	instructorOp, err := s.StartKiosk(ctx, hse, "b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.CompleteFake(instructorOp.ID, "900101300027", "Инструктор"); err != nil {
+		t.Fatal(err)
+	}
+	for range 4 {
+		status, err = s.SigningStatus(ctx, hse, instructorOp.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	a := repo.assigns[200]
+	if !status.Done || len(repo.edsSigns) != 2 || a.RecordDDCPath == "" || a.RecordDDCSHA256 == "" {
+		t.Fatalf("DDC не заархивирован после второй подписи: status=%+v assignment=%+v signs=%+v", status, a, repo.edsSigns)
+	}
+	if ddc, err := s.DDC(ctx, hse, 200); err != nil || string(ddc) != "pdf" {
+		t.Fatalf("архивный DDC не читается: %q %v", ddc, err)
+	}
 }
 
 func TestSigningOperationFailurePersists(t *testing.T) {
@@ -427,6 +457,34 @@ func TestSigningOperationFailurePersists(t *testing.T) {
 	status, err = s.SigningStatus(ctx, hse, op.ID)
 	if err != nil || status.Error == "" || repo.signOps[op.ID].Stage != domain.SigningFailed {
 		t.Fatalf("ошибка потерялась после рестарта: status=%+v stored=%+v err=%v", status, repo.signOps[op.ID], err)
+	}
+}
+
+func TestSigningUsesRegisteredCertificateIdentity(t *testing.T) {
+	s, repo, _ := setup()
+	provider := s.eds.(*eds)
+	op, err := s.StartKiosk(ctx, hse, "b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider.result = EDSResult{Done: true, CMS: "cms-without-browser-identity"}
+	provider.registeredIIN = "900101300099"
+	if _, err := s.SigningStatus(ctx, hse, op.ID); err != nil {
+		t.Fatal(err)
+	}
+	status, err := s.SigningStatus(ctx, hse, op.ID)
+	if err != nil || status.Error == "" || len(repo.edsSigns) != 0 {
+		t.Fatalf("чужой сертификат должен быть отклонён после регистрации: status=%+v signs=%+v err=%v", status, repo.edsSigns, err)
+	}
+}
+
+func TestSigningRejectsChangedRecordPDF(t *testing.T) {
+	s, repo, _ := setup()
+	a := repo.assigns[200]
+	a.RecordSHA256 = strings.Repeat("0", 64)
+	repo.assigns[200] = a
+	if _, err := s.StartKiosk(ctx, hse, "b"); !isInvalid(err, "изменена") {
+		t.Fatalf("изменённый после фиксации PDF нельзя подписать: %v", err)
 	}
 }
 

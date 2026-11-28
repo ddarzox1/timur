@@ -39,8 +39,13 @@ func run() error {
 	if err := cfg.Validate(); err != nil {
 		return err
 	}
+	var eds induction.EDS = sigex.NewFake()
 	if !cfg.SIGEX.Fake {
-		return errors.New("реальный SIGEX пока выключен: сначала подтвердите договор, mTLS и регистрацию первой подписи; используйте SIGEX_FAKE=1")
+		client, err := sigex.New(sigex.Config{URL: cfg.SIGEX.URL, Cert: cfg.SIGEX.Cert, Key: cfg.SIGEX.Key})
+		if err != nil {
+			return err
+		}
+		eds = client
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -59,7 +64,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	h := NewHandler(postgres.New(pool), files, filesOrigin, cfg)
+	h := NewHandler(postgres.New(pool), files, filesOrigin, cfg, eds)
 	srv := &http.Server{Addr: cfg.Addr, Handler: h.Routes(),
 		ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 2 * time.Minute, WriteTimeout: 2 * time.Minute, IdleTimeout: 2 * time.Minute}
 	go func() {
@@ -96,13 +101,13 @@ func newStorage(ctx context.Context, cfg config.Config) (fileStore, string, erro
 }
 
 // NewHandler собирает все слои: репозиторий → usecase → HTTP.
-func NewHandler(store *postgres.Store, files fileStore, filesOrigin string, cfg config.Config) *httpdelivery.Handler {
+func NewHandler(store *postgres.Store, files fileStore, filesOrigin string, cfg config.Config, eds induction.EDS) *httpdelivery.Handler {
 	sender := sms.Log{}
 	hazards := hazard.New(store, store, files)
 	return httpdelivery.New(httpdelivery.Services{
 		Auth:       auth.New(store),
 		Hazards:    hazards,
-		Inductions: induction.New(store, store, files, sender, pdfinfra.Protocol{}, sigex.NewFake(), cfg.BaseURL),
+		Inductions: induction.New(store, store, files, sender, pdfinfra.Protocol{}, eds, cfg.BaseURL),
 		Checklists: checklist.New(store, store, files, hazards),
 		People:     people.New(store, files),
 		Dashboard:  dashboard.New(store),

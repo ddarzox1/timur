@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"encoding/json"
 	"fmt"
 	"time"
 )
@@ -52,6 +53,8 @@ type Assignment struct {
 	KnowledgeResult       string     `db:"knowledge_result"`
 	RecordPDFPath         string     `db:"record_pdf_path"`
 	RecordSHA256          string     `db:"record_sha256"`
+	RecordDDCPath         string     `db:"record_ddc_path"`
+	RecordDDCSHA256       string     `db:"record_ddc_sha256"`
 	UserIIN               string     `db:"user_iin"`
 	SignerIIN             string     `db:"iin"`
 	SignerName            string     `db:"signer_name"`
@@ -162,8 +165,25 @@ type InductionDoc struct {
 
 type EDSSignature struct {
 	IIN, Name, CMS string
+	EnrichedCMS    string
 	SIGEXID        string
 	SignID         int64
+	Evidence       SignatureEvidence
+	DDCPath        string
+	DDCSHA256      string
+}
+
+// SignatureEvidence — проверяемые метаданные сертификата, OCSP и штампа времени,
+// полученные сервером непосредственно из SIGEX после регистрации подписи.
+type SignatureEvidence struct {
+	IIN, BIN, Name                     string
+	Subject, Issuer, SerialNumber      string
+	Certificate                        string
+	SignAlgorithm, KeyStorage          string
+	CertificateFrom, CertificateUntil  int64
+	StoredAt                           int64
+	PolicyIDs, KeyUsages, ExtKeyUsages []string
+	TSP, OCSP                          json.RawMessage
 }
 
 const (
@@ -194,6 +214,10 @@ type SigningOperationRecord struct {
 	SignerIIN          string     `db:"signer_iin"`
 	SignerName         string     `db:"signer_name"`
 	CMS                string     `db:"cms"`
+	EnrichedCMS        string     `db:"enriched_cms"`
+	EvidenceJSON       []byte     `db:"evidence"`
+	DDCPath            string     `db:"ddc_path"`
+	DDCSHA256          string     `db:"ddc_sha256"`
 	SIGEXID            string     `db:"sigex_id"`
 	SIGEXSignID        *int64     `db:"sigex_sign_id"`
 	Error              string     `db:"error"`

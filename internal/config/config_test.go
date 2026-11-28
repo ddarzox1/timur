@@ -25,8 +25,14 @@ func TestValidate(t *testing.T) {
 	if err := (Config{Storage: "ftp"}).Validate(); err == nil {
 		t.Fatal("неизвестное хранилище")
 	}
-	ok := Config{Storage: "s3", S3: S3{Endpoint: "object.pscloud.io", Bucket: "b", AccessKey: "k", SecretKey: "s"}}
+	ok := Config{Storage: "s3", S3: S3{Endpoint: "object.pscloud.io", Bucket: "b", AccessKey: "k", SecretKey: "s"}, SIGEX: SIGEX{Fake: true}}
 	if err := ok.Validate(); err != nil {
 		t.Fatal(err)
+	}
+	if err := (Config{Storage: "local", SIGEX: SIGEX{URL: "https://sigex.kz"}}).Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if err := (Config{Storage: "local", SIGEX: SIGEX{URL: "https://sigex.kz", Cert: "cert.pem"}}).Validate(); err == nil {
+		t.Fatal("сертификат без ключа")
 	}
 }

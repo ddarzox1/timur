@@ -72,12 +72,29 @@ type EDSOperation struct {
 type EDSResult struct {
 	Done           bool
 	IIN, Name, CMS string
+	Error          string
+}
+
+type EDSRegisterInput struct {
+	DocumentID    string
+	PDF           []byte
+	CMS           string
+	ExpectedIINs  []string
+	CandidateIIN  string
+	CandidateName string
+}
+
+type EDSRegistration struct {
+	DocumentID  string
+	SignID      int64
+	EnrichedCMS string
+	Evidence    domain.SignatureEvidence
 }
 
 type EDS interface {
 	Start(context.Context, []byte, string) (EDSOperation, error)
-	Poll(context.Context, EDSOperation) (EDSResult, error)
-	Register(context.Context, string, []byte, string) (string, int64, error)
+	Poll(context.Context, EDSOperation, []byte) (EDSResult, error)
+	Register(context.Context, EDSRegisterInput) (EDSRegistration, error)
 	BuildDDC(context.Context, string, []byte) ([]byte, error)
 	Complete(string, string, string) error
 }
